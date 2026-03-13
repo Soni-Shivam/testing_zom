@@ -95,16 +95,41 @@ class CSAOEngine:
         print("  STEP 1: OFFLINE PIPELINE INITIALIZATION")
         print("="*70)
 
-        # Generate Data
-        print(f"[Engine] Generating synthetic corpus ({n_trajectories} trajectories)...")
-        pipeline = SynthesisPipeline(seed=self.seed)
-        df, _ = pipeline.generate(n_trajectories=n_trajectories)
-        self.corpus_df = df
+        # Generate or Load Data
+        csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "cart_trajectories.csv")
+        if os.path.exists(csv_path):
+            print(f"[Engine] Loading full canonical corpus from {csv_path} (10k+ entries)...")
+            self.corpus_df = pd.read_csv(csv_path)
+        else:
+            print(f"[Engine] Generating synthetic corpus (10,000 trajectories)...")
+            pipeline = SynthesisPipeline(seed=self.seed)
+            df, _ = pipeline.generate(n_trajectories=10000)
+            self.corpus_df = df
+            os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+            self.corpus_df.to_csv(csv_path, index=False)
         
-        known_items = list(self.corpus_df["item_name"].unique())
-        self.item_to_idx = {name: idx + 1 for idx, name in enumerate(sorted(known_items))}
+        # [Taxonomy Fix 1]: Global Vocabulary Initialization
+        print("[Engine] Establishing global vocabulary and semantic index from pure taxonomies...")
+        canonical_items = set()
+        self.item_meta = [] # Store rich metadata for SLM
+        
+        for cuisine, categories in CUISINE_MENUS.items():
+            for category, items in categories.items():
+                for item in items:
+                    name = item["name"]
+                    if name not in canonical_items:
+                        canonical_items.add(name)
+                        self.item_meta.append({
+                            "item_name": name,
+                            "cuisine": cuisine,
+                            "category": category,
+                            "description": f"A delicious {category} dish from {cuisine} cuisine named {name}."
+                        })
+        
+        known_items = sorted(list(canonical_items))
+        self.item_to_idx = {name: idx + 1 for idx, name in enumerate(known_items)}
         self.idx_to_item = {idx: name for name, idx in self.item_to_idx.items()}
-        print(f"[Engine] Data generation complete. {len(df)} interactions across {len(known_items)} unique items.")
+        print(f"[Engine] Data loading complete. {len(self.corpus_df)} simulated interactions mapped across {len(known_items)} canonical items.")
 
         # Build Feature Store
         print("[Engine] Initializing feature store and running nightly/NRT jobs...")
@@ -137,15 +162,14 @@ class CSAOEngine:
         )
 
         # Initialize SLM Embedder and pre-compute embeddings
-        print("[Engine] Initializing SLM Embedder and pre-computing item embeddings into simulated Redis (Fix 5)...")
+        print("[Engine] Initializing SLM Embedder and pre-computing semantic embeddings into simulated Redis...")
         self.slm_embedder = SLMEmbedder(device=str(self.device))
         
-        item_meta_df = self.corpus_df[["item_name", "cuisine"]].drop_duplicates("item_name")
-        item_meta_df["description"] = item_meta_df["item_name"] + " from the menu."
-        
+        # [Taxonomy Fix 2]: Complete SLM Semantic Indexing
+        item_meta_df = pd.DataFrame(self.item_meta)
         slm_embs = self.slm_embedder.generate_embeddings(item_meta_df)
         
-        # Store in SimulatedRedisStore (Fix 5)
+        # Store in SimulatedRedisStore
         for i, row in enumerate(item_meta_df.itertuples()):
             key = f"slm:{row.item_name}"
             # Serialize numpy array to bytes
@@ -315,12 +339,14 @@ class CSAOEngine:
                 
                 # We will pick 1 target and 7 negative samples
                 cands = [target_item_name]
+                all_taxonomic_items = list(self.item_to_idx.keys())
                 while len(cands) < 8:
-                    neg = self.rng.choice(list(self.item_to_idx.keys()))
+                    neg = self.rng.choice(all_taxonomic_items)
                     if neg not in cands:
                         cands.append(neg)
                 
-                cand_ids = torch.tensor([self.item_to_idx[c] for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
+                # [Taxonomy Fix 3]: Fallback Safety using .get()
+                cand_ids = torch.tensor([self.item_to_idx.get(c, 0) for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
                 cand_slm = self._get_slm_batch(cands).unsqueeze(0)
 
                 # Prepare Cart
@@ -446,12 +472,14 @@ class CSAOEngine:
                 target_item_name = next_row["item_name"]
                 
                 cands = [target_item_name]
+                all_taxonomic_items = list(self.item_to_idx.keys())
                 while len(cands) < 10:
-                    neg = self.rng.choice(list(self.item_to_idx.keys()))
+                    neg = self.rng.choice(all_taxonomic_items)
                     if neg not in cands:
                         cands.append(neg)
                 
-                cand_ids = torch.tensor([self.item_to_idx[c] for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
+                # [Taxonomy Fix 3]: Fallback Safety using .get()
+                cand_ids = torch.tensor([self.item_to_idx.get(c, 0) for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
                 cand_slm = self._get_slm_batch(cands).unsqueeze(0)
 
                 cart_idx_seq = [self.item_to_idx.get(c["name"], 0) for c in cart_items]
@@ -567,11 +595,12 @@ class CSAOEngine:
 
                 target_item_name = next_row["item_name"]
                 cands = [target_item_name]
+                all_taxonomic_items = list(self.item_to_idx.keys())
                 while len(cands) < 8:
-                    neg = self.rng.choice(list(self.item_to_idx.keys()))
+                    neg = self.rng.choice(all_taxonomic_items)
                     if neg not in cands: cands.append(neg)
                 
-                cand_ids = torch.tensor([self.item_to_idx[c] for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
+                cand_ids = torch.tensor([self.item_to_idx.get(c, 0) for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
                 cand_slm = self._get_slm_batch(cands).unsqueeze(0)
                 cart_idx_seq = [self.item_to_idx.get(c["name"], 0) for c in cart_items]
                 cart_qty_seq = [c["quantity"] for c in cart_items]
@@ -620,7 +649,7 @@ class CSAOEngine:
         hour_of_day: int,
         day_of_week: int,
         is_weekend: bool,
-    ) -> List[Tuple[str, float]]:
+    ) -> Tuple[List[Tuple[str, float]], Dict[str, any]]:
         """
         3. Online Inference Endpoint
         Takes a live request and returns top-K predictions under 65ms latency constraint.
@@ -657,20 +686,22 @@ class CSAOEngine:
         cs_result = self.cold_start_router.route(request)
         
         # Gather final candidates (Combine CS candidates with Menu)
-        candidates = set(menu_items)
+        candidates_set = set(menu_items)
         if cs_result.city_popularity_recs:
             for item, _ in cs_result.city_popularity_recs[:5]:
-                candidates.add(item)
+                candidates_set.add(item)
         if cs_result.kg_seeded_recs:
             for item, _ in cs_result.kg_seeded_recs[:5]:
-                candidates.add(item)
+                candidates_set.add(item)
                 
-        candidates = list(candidates)[:20] # Take at most 20 candidates for scoring
+        # [Taxonomy Fix 4]: Taxonomy-Driven Candidate Generation (NO MAX CAP)
+        # Score the entire eligible taxonomic pool; do NOT truncate to 20.
+        candidates = list(candidates_set)
 
         # --- Batch Neural Scoring ---
         # 1. Compute context and gap once (they are independent of candidates)
         cart_total = sum(c.get("unit_price", 100) * c.get("quantity", 1) for c in cart_items)
-        user_aov = 500.0
+        user_aov = 800.0
         
         f_vec_base, segments_base = self.online_calculator.compute_feature_vector(
             user_id=user_id,
@@ -731,7 +762,7 @@ class CSAOEngine:
             
             # Apply Temperature scaling (Fix 3) to true probabilities
             raw_logits = scores / self.temperature
-            probs = torch.softmax(raw_logits, dim=-1)[0].cpu().numpy()
+            probs = torch.nn.functional.softmax(raw_logits, dim=-1)[0].cpu().numpy()
         
         # --- Form Rerank Candidates ---
         # [Fix 4A]: Wallet Cap Filter
@@ -823,11 +854,61 @@ class CSAOEngine:
                 selected_scores.append(best_mmr_score)
                 unselected_items.remove(best_item)
         
+        if selected_scores:
+            min_mmr = min(selected_scores)
+            max_mmr = max(selected_scores)
+            if max_mmr > min_mmr:
+                selected_scores = [(s - min_mmr) / (max_mmr - min_mmr) for s in selected_scores]
+            else:
+                selected_scores = [1.0 for _ in selected_scores]
+        
         final_ranked = list(zip(selected_items, selected_scores))
         
         elapsed_ms = (time.perf_counter_ns() - t0) / 1e6
+        
+        # --- Build Verbose Debug Payload ---
+        cold_start_path = []
+        if cs_result.user_cold_start_triggered: cold_start_path.append("User Tier 3")
+        if cs_result.restaurant_cold_start_triggered: cold_start_path.append("Restaurant Tier 2")
+        if cs_result.item_cold_start_triggered: cold_start_path.append("Item Tier 1")
+        
+        scoring_breakdown = []
+        for i, item_name in enumerate(selected_items):
+            # Fetch original features used
+            c_idx = candidates.index(item_name)
+            neural_prob = probs[c_idx].item()
+            gfs = cand_gfs[item_name]
+            # Use velocity from the original valid candidates list ideally, but we can recompute or leave it out.
+            velocity = 0.0 # Just for structure if needed, or omit if not explicitly required by user. User asked for: "[Item Name | Neural Prob | Gap Fill | Velocity | Final Scaled Score]"
+            # Hmm, let's grab velocity from valid_candidates
+            for vc in valid_candidates:
+                if vc.item_name == item_name:
+                    velocity = vc.zone_velocity
+                    break
+
+            scoring_breakdown.append({
+                "Rank": i + 1,
+                "Item Name": item_name,
+                "Neural Prob": float(neural_prob),
+                "Gap Fill": float(gfs),
+                "Velocity": float(velocity),
+                "Final Scaled Score": float(selected_scores[i])
+            })
+            
+        debug_payload = {
+            "latency": elapsed_ms,
+            "cold_start_path": " | ".join(cold_start_path) if cold_start_path else "None (Warm Flow)",
+            "feature_state": {
+                "meal_gap_vector": gap.tolist() if isinstance(gap, np.ndarray) else list(gap),
+                "cart_total": cart_total,
+                "user_aov": user_aov,
+                "price_anchor_ratio": (cart_total / max(user_aov, 1.0))
+            },
+            "scoring_breakdown": scoring_breakdown
+        }
+        
         print(f"[Inference] predict_addon completed in {elapsed_ms:.2f} ms")
-        return final_ranked
+        return final_ranked, debug_payload
 
 
 if __name__ == "__main__":

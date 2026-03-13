@@ -137,11 +137,18 @@ class LightGBMReranker:
         ], dtype=np.float64)
 
         if self.model is not None:
-            scores = self.model.predict(features)
+            raw_scores = self.model.predict(features)
         else:
             # Fallback: weighted sum if model not trained
             weights = np.array([0.4, 0.2, 0.1, 0.1, 0.1, 0.1])
-            scores = features @ weights
+            raw_scores = features @ weights
+
+        min_score = np.min(raw_scores)
+        max_score = np.max(raw_scores)
+        if max_score > min_score:
+            scores = (raw_scores - min_score) / (max_score - min_score)
+        else:
+            scores = np.zeros_like(raw_scores)
 
         # Sort by score descending, take top-K
         ranked_indices = np.argsort(scores)[::-1][:self.k]
