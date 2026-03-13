@@ -59,6 +59,23 @@ class CSAOEngine:
         self.seed = seed
         self.device = torch.device(device)
         self.rng = np.random.default_rng(seed)
+        
+        # In-Memory Backend User Database
+        self.user_db = {
+            1: {"order_count": 0, "total_spend": 0.0, "mean_aov": 0.0, "past_ordered_items": [], "cuisine_counts": {}},
+            2: {"order_count": 4, "total_spend": 1200.0, "mean_aov": 300.0, "past_ordered_items": [
+                {"name": "Masala Dosa", "quantity": 1}, {"name": "Idli", "quantity": 2},
+                {"name": "Vada", "quantity": 1}, {"name": "Filter Coffee", "quantity": 2}
+            ], "cuisine_counts": {"South Indian": 4}},
+            3: {"order_count": 15, "total_spend": 7500.0, "mean_aov": 500.0, "past_ordered_items": [
+                {"name": "Butter Chicken", "quantity": 1}, {"name": "Garlic Naan", "quantity": 3},
+                {"name": "Dal Makhani", "quantity": 1}, {"name": "Jeera Rice", "quantity": 1},
+                {"name": "Paneer Tikka", "quantity": 1}, {"name": "Lassi", "quantity": 2},
+                {"name": "Tandoori Roti", "quantity": 4}, {"name": "Gulab Jamun", "quantity": 2},
+                {"name": "Chicken Biryani", "quantity": 1}, {"name": "Raita", "quantity": 1}
+            ], "cuisine_counts": {"North Indian": 10, "Mughlai": 5}}
+        }
+        self.rng = np.random.default_rng(seed)
 
         # Storage
         self.corpus_df: Optional[pd.DataFrame] = None
@@ -83,6 +100,22 @@ class CSAOEngine:
         
         # Temperature Calibration (Fix 3)
         self.temperature: nn.Parameter = nn.Parameter(torch.ones(1) * 1.5)
+
+    def place_order(self, user_id: int, cart_items: List[Dict[str, any]], cart_total: float, cuisine: str = "Unknown") -> None:
+        """Saves a completed order to the user's history in the in-memory database."""
+        if user_id not in self.user_db:
+            self.user_db[user_id] = {"order_count": 0, "total_spend": 0.0, "mean_aov": 0.0, "past_ordered_items": [], "cuisine_counts": {}}
+            
+        profile = self.user_db[user_id]
+        profile["order_count"] += 1
+        profile["total_spend"] += cart_total
+        profile["mean_aov"] = profile["total_spend"] / profile["order_count"]
+        
+        for item in cart_items:
+            profile["past_ordered_items"].append({"name": item["name"], "quantity": item.get("quantity", 1)})
+            
+        profile["cuisine_counts"][cuisine] = profile["cuisine_counts"].get(cuisine, 0) + 1
+        print(f"[Engine] Order placed for User {user_id}. Total Orders: {profile['order_count']}, AOV: ₹{profile['mean_aov']:.2f}")
 
     def run_offline_pipeline(self, n_trajectories: int = 1000) -> None:
         """
@@ -381,7 +414,7 @@ class CSAOEngine:
 
         print(f"[Engine] Backbone Training Complete. Processed {batches_processed} steps, Avg Loss: {total_loss/max(1, batches_processed):.4f}")
         
-        print("[Engine] Generating mock tabular features mixed with neural scores to train LightGBM...")
+        # print("[Engine] Generating mock tabular features mixed with neural scores to train LightGBM...")
         self.neural_model.eval()
         self.reranker = LightGBMReranker(k=10) # Set to 10 for validation extraction
         
@@ -669,11 +702,17 @@ class CSAOEngine:
 
         cart_names = [c["name"] for c in cart_items]
         
+        # Fetch matching user profile
+        if user_id not in self.user_db:
+            self.user_db[user_id] = {"order_count": 0, "total_spend": 0.0, "mean_aov": 0.0, "past_ordered_items": [], "cuisine_counts": {}}
+        profile = self.user_db[user_id]
+        
         # Step A: Cold-Start Routing
+        # Use profile["order_count"] instead of 0 to enable Statefulness
         request = ColdStartRequest(
             user_id=user_id,
-            user_order_count=0, # Assume 0 to trigger user cold start
-            user_orders=[],
+            user_order_count=profile["order_count"], 
+            user_orders=[], # In a full system, translate past_ordered_items to UserObservation
             restaurant_name=restaurant_name,
             restaurant_interaction_count=0, # Assume 0 to trigger rest cold start
             restaurant_menu=menu_items,
@@ -701,7 +740,7 @@ class CSAOEngine:
         # --- Batch Neural Scoring ---
         # 1. Compute context and gap once (they are independent of candidates)
         cart_total = sum(c.get("unit_price", 100) * c.get("quantity", 1) for c in cart_items)
-        user_aov = 800.0
+        user_aov = profile["mean_aov"] if profile["order_count"] > 0 else 500.0
         
         f_vec_base, segments_base = self.online_calculator.compute_feature_vector(
             user_id=user_id,
@@ -746,11 +785,31 @@ class CSAOEngine:
         # Additional tensors for SLM
         cart_slm = self._get_slm_batch(cart_names).unsqueeze(0)
         
-        # History (empty for new online request demo, ideally fetch via user_id)
+        # [Task 2]: Dynamic Neural History (GRU4Rec Hydration)
         hist_ids = torch.zeros((1, 10), dtype=torch.long, device=self.device)
         hist_qty = torch.zeros((1, 10), dtype=torch.float32, device=self.device)
         hist_slm = torch.zeros((1, 10, 384), dtype=torch.float32, device=self.device)
         hist_lengths = torch.ones(1, dtype=torch.long, device=self.device)
+        gru_status = "Bypassed (Zero-Tensors)"
+        
+        if profile["order_count"] >= 3 and len(profile["past_ordered_items"]) > 0:
+            past_items = profile["past_ordered_items"][-10:] # Take last 10
+            gru_status = f"Hydrated ({len(past_items)} items)"
+            seq_len = len(past_items)
+            hist_lengths[0] = seq_len
+            
+            p_ids = [self.item_to_idx.get(item["name"], 0) for item in past_items]
+            p_qty = [item["quantity"] for item in past_items]
+            p_names = [item["name"] for item in past_items]
+            
+            p_ids_t = torch.tensor(p_ids, dtype=torch.long, device=self.device)
+            p_qty_t = torch.tensor(p_qty, dtype=torch.float32, device=self.device)
+            p_slm_t = self._get_slm_batch(p_names)
+            
+            # Place at the end (right-aligned or left-aligned? Usually GRU4Rec takes left-aligned with lengths)
+            hist_ids[0, :seq_len] = p_ids_t
+            hist_qty[0, :seq_len] = p_qty_t
+            hist_slm[0, :seq_len, :] = p_slm_t
 
         self.neural_model.eval()
         with torch.no_grad():
@@ -799,8 +858,27 @@ class CSAOEngine:
         # Step D: LightGBM Re-Ranking (base score generation)
         if not valid_candidates:
             print("[Inference] predict_addon completed: 0 candidates passed Wallet Cap.")
-            return []
+            t1 = time.perf_counter_ns()
+            elapsed_ms = (t1 - t0) / 1e6
+            cold_start_path = []
+            if cs_result.user_cold_start_triggered: cold_start_path.append("User Tier 3")
+            if cs_result.restaurant_cold_start_triggered: cold_start_path.append("Restaurant Tier 2")
+            if cs_result.item_cold_start_triggered: cold_start_path.append("Item Tier 1")
             
+            debug_payload = {
+                "latency": elapsed_ms,
+                "cold_start_path": " | ".join(cold_start_path) if cold_start_path else "None (Warm Flow)",
+                "gru4rec_status": gru_status,
+                "feature_state": {
+                    "meal_gap_vector": gap.tolist() if isinstance(gap, np.ndarray) else list(gap),
+                    "cart_total": cart_total,
+                    "user_aov": user_aov,
+                    "price_anchor_ratio": (cart_total / max(user_aov, 1.0))
+                },
+                "scoring_breakdown": []
+            }
+            return [], debug_payload
+
         ranked_base = self.reranker.rerank(valid_candidates)
         
         # [Fix 4B]: Maximal Marginal Relevance (MMR)
@@ -898,6 +976,7 @@ class CSAOEngine:
         debug_payload = {
             "latency": elapsed_ms,
             "cold_start_path": " | ".join(cold_start_path) if cold_start_path else "None (Warm Flow)",
+            "gru4rec_status": gru_status,
             "feature_state": {
                 "meal_gap_vector": gap.tolist() if isinstance(gap, np.ndarray) else list(gap),
                 "cart_total": cart_total,
@@ -909,7 +988,6 @@ class CSAOEngine:
         
         print(f"[Inference] predict_addon completed in {elapsed_ms:.2f} ms")
         return final_ranked, debug_payload
-
 
 if __name__ == "__main__":
     print("="*70)

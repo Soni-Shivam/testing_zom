@@ -12,6 +12,7 @@ st.set_page_config(page_title="Zomato CSAO Super Add-On", layout="wide", page_ic
 # ==========================================
 @st.cache_resource(show_spinner=False)
 def load_engine():
+    # Cache buster to correctly load the updated CSAOEngine with user_db
     engine = CSAOEngine()
     engine.run_offline_pipeline(n_trajectories=100)
     engine.train_system(epochs=1, limit_batches=50)
@@ -52,22 +53,40 @@ def clear_cart():
     st.session_state.ranked_candidates = []
 
 # ==========================================
-# 3. Global Context
+# 3. Sidebar User Switcher & Dashboard
+# ==========================================
+with st.sidebar:
+    st.header("👤 Active User Simulator")
+    user_options = {
+        1: "New User (0 Orders)",
+        2: "Regular User (4 Orders)",
+        3: "Power User (15 Orders)"
+    }
+    sel_user_id = st.selectbox("Select Active User", options=list(user_options.keys()), format_func=lambda x: user_options[x], index=0)
+    
+    profile = engine.user_db.get(sel_user_id, {"order_count": 0, "mean_aov": 0.0, "cuisine_counts": {}})
+    top_cuisine = "None"
+    if profile["cuisine_counts"]:
+        top_cuisine = max(profile["cuisine_counts"], key=profile["cuisine_counts"].get)
+        
+    st.divider()
+    st.subheader("📊 User Profile")
+    st.metric("Total Orders", profile["order_count"])
+    st.metric("Average Order Value (AOV)", f"₹{profile['mean_aov']:.2f}")
+    st.metric("Top Cuisine", top_cuisine)
+
+# ==========================================
+# 4. Global Context
 # ==========================================
 st.title("🛒 Zomato Smart Cart & Add-Ons")
 
-with st.expander("⚙️ Shopping Environment Settings (User, City, Time)", expanded=False):
-    c1, c2, c3, c4 = st.columns(4)
+with st.expander("⚙️ Shopping Environment Settings (City, Time)", expanded=False):
+    c1, c2, c3 = st.columns(3)
     with c1:
-        sel_user_id = st.number_input("User ID", value=12345, step=1)
         sel_city = st.selectbox("City", ["Delhi-NCR", "Mumbai", "Bangalore"])
     with c2:
-        cuisines = list(CUISINE_MENUS.keys())
-        sel_cuisine = st.selectbox("Cuisine Context", cuisines, index=0)
-        sel_rest_name = st.text_input("Restaurant Name", value="Spice Heaven")
-    with c3:
         sel_hour = st.slider("Hour of Day", 0, 23, 20)
-    with c4:
+    with c3:
         days = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
         sel_day = st.selectbox("Day of Week", options=list(days.keys()), format_func=lambda x: days[x], index=5)
         sel_is_weekend = st.checkbox("Is Weekend", value=(sel_day >= 5))
@@ -80,32 +99,33 @@ col1, col2 = st.columns([2, 1])
 
 # --- LEFT COLUMN: Restaurant Menu ---
 with col1:
-    st.header(f"🍽️ Menu: {sel_rest_name}")
-    st.caption(f"Showing complete catalog for Cuisine: **{sel_cuisine}**")
+    st.header("🍽️ Complete Menu Catalog")
+    st.caption("Showing items from all available restaurants and cuisines")
     
-    menu_data = CUISINE_MENUS.get(sel_cuisine, {})
-    for category, items in menu_data.items():
-        with st.expander(f"🥘 {category.capitalize()}", expanded=True):
-            cols_per_row = 3
-            for i in range(0, len(items), cols_per_row):
-                row_cols = st.columns(cols_per_row)
-                for j in range(cols_per_row):
-                    if i + j < len(items):
-                        item = items[i + j]
-                        name = item["name"]
-                        price = float(item["price"])
-                        
-                        with row_cols[j]:
-                            with st.container(border=True):
-                                st.markdown(f"**{name}**")
-                                st.markdown(f"₹{price:.2f}")
-                                st.button(
-                                    "Add to Cart", 
-                                    key=f"menu_{name}_{category}_{i}_{j}", 
-                                    on_click=add_to_cart, 
-                                    args=(name, category, price),
-                                    use_container_width=True
-                                )
+    for cuisine_name, menu_data in CUISINE_MENUS.items():
+        st.subheader(f"🏪 {cuisine_name} Restaurant")
+        for category, items in menu_data.items():
+            with st.expander(f"🥘 {cuisine_name} - {category.capitalize()}", expanded=False):
+                cols_per_row = 3
+                for i in range(0, len(items), cols_per_row):
+                    row_cols = st.columns(cols_per_row)
+                    for j in range(cols_per_row):
+                        if i + j < len(items):
+                            item = items[i + j]
+                            name = item["name"]
+                            price = float(item["price"])
+                            
+                            with row_cols[j]:
+                                with st.container(border=True):
+                                    st.markdown(f"**{name}**")
+                                    st.markdown(f"₹{price:.2f}")
+                                    st.button(
+                                        "Add to Cart", 
+                                        key=f"menu_{cuisine_name}_{name}_{category}_{i}_{j}", 
+                                        on_click=add_to_cart, 
+                                        args=(name, category, price),
+                                        width='stretch'
+                                    )
 
 # --- RIGHT COLUMN: Live Cart ---
 with col2:
@@ -125,13 +145,25 @@ with col2:
         st.divider()
         st.markdown(f"### Total: ₹{total_value:.2f}")
         
+        # Determine dominant cuisine based on first cart item, or default
+        inferred_cuisine = "North Indian"
+        inferred_rest_name = "Zomato Global Hub"
+        if len(st.session_state.cart) > 0:
+            first_item = st.session_state.cart[0]["name"]
+            for c_name, m_data in CUISINE_MENUS.items():
+                for cat, its in m_data.items():
+                    if any(it["name"] == first_item for it in its):
+                        inferred_cuisine = c_name
+                        inferred_rest_name = f"{c_name} Restaurant"
+                        break
+
         # Calculate inferred Meal Template categories
         f_vec, segments = engine.online_calculator.compute_feature_vector(
             user_id=sel_user_id,
             user_aov_ceiling=800.0,
             cart_items=st.session_state.cart,
             cart_total=total_value,
-            cuisine=sel_cuisine,
+            cuisine=inferred_cuisine,
             hour_of_day=sel_hour,
             day_of_week=sel_day,
             is_weekend=sel_is_weekend,
@@ -143,17 +175,27 @@ with col2:
         gap = f_vec[gap_start:gap_end]
         st.caption(f"**Inferred Meal Gap Vector (M/S/B/D):** {gap.tolist()}")
         
-        st.button("🗑️ Clear Cart", on_click=clear_cart, use_container_width=True)
+        c_btn1, c_btn2 = st.columns(2)
+        with c_btn1:
+            st.button("🗑️ Clear Cart", on_click=clear_cart, use_container_width=True)
+        with c_btn2:
+            def place_checkout():
+                if len(st.session_state.cart) > 0:
+                    engine.place_order(sel_user_id, st.session_state.cart, total_value, inferred_cuisine)
+                    clear_cart()
+                    
+            if st.button("🛒 Checkout & Place Order", type="primary", use_container_width=True, on_click=place_checkout):
+                st.toast("Order Placed Successfully! User History updated.", icon="🎉")
         
         st.divider()
-        if st.button("Generate Add-On Recommendations", type="primary", use_container_width=True):
-            with st.spinner("AI thinking..."):
+        if len(st.session_state.cart) > 0:
+            with st.spinner("AI actively analyzing cart and user history..."):
                 ranked, debug = engine.predict_addon(
                     user_id=sel_user_id,
                     cart_items=st.session_state.cart,
-                    restaurant_id="rest_ui_1",
-                    restaurant_name=sel_rest_name,
-                    restaurant_cuisine=sel_cuisine,
+                    restaurant_id="rest_ui_global",
+                    restaurant_name=inferred_rest_name,
+                    restaurant_cuisine=inferred_cuisine,
                     city=sel_city,
                     hour_of_day=sel_hour,
                     day_of_week=sel_day,
@@ -162,16 +204,16 @@ with col2:
                 st.session_state.ranked_candidates = ranked
                 st.session_state.debug_payload = debug
 
-        if st.session_state.ranked_candidates:
             st.subheader("✨ You might also like...")
             for idx, (rec_item, score) in enumerate(st.session_state.ranked_candidates[:5]):
                 with st.container(border=True):
                     rec_price = 150.0 
-                    for cat, its in CUISINE_MENUS.get(sel_cuisine, {}).items():
-                        for it in its:
-                            if it["name"] == rec_item:
-                                rec_price = float(it["price"])
-                                break
+                    for m_data in CUISINE_MENUS.values():
+                        for cat, its in m_data.items():
+                            for it in its:
+                                if it["name"] == rec_item:
+                                    rec_price = float(it["price"])
+                                    break
                     
                     st.markdown(f"**{rec_item}**  \n`Score: {score:.3f}` | ₹{rec_price:.2f}")
                     st.button(
@@ -180,7 +222,7 @@ with col2:
                         on_click=add_to_cart, 
                         args=(rec_item, "Add-On", rec_price),
                         type="secondary",
-                        use_container_width=True
+                        width='stretch'
                     )
 
 # ==========================================
@@ -197,6 +239,7 @@ if st.session_state.debug_payload:
         
     with lc2:
         st.info(f"**Cold-Start Routing Path:** {dbg['cold_start_path']}")
+        st.info(f"**GRU4Rec Status:** {dbg.get('gru4rec_status', 'Unknown')}")
         
     with st.expander("Raw Feature State Dict", expanded=False):
         st.json(dbg["feature_state"])
@@ -204,6 +247,6 @@ if st.session_state.debug_payload:
     st.subheader("Top 8 Candidates Scoring Breakdown")
     if dbg["scoring_breakdown"]:
         df_breakdown = pd.DataFrame(dbg["scoring_breakdown"])
-        st.dataframe(df_breakdown, use_container_width=True, hide_index=True)
+        st.dataframe(df_breakdown, width='stretch', hide_index=True)
 else:
     st.caption("Awaiting inference... Add items to cart and generate recommendations to see logs.")
