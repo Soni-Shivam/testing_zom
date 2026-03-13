@@ -77,9 +77,12 @@ class CSAOEngine:
         self.online_calculator: Optional[OnlinePerRequestCalculator] = None
         self.item_gen: Optional[CandidateItemFeatureGenerator] = None
 
-        # SLM Storage
+        # SLM Storage (Fix 5)
         self.slm_embedder: Optional[SLMEmbedder] = None
-        self.item_slm_cache: Dict[str, torch.Tensor] = {}
+        # We will use self.feature_store for SLM (Fix 5)
+        
+        # Temperature Calibration (Fix 3)
+        self.temperature: nn.Parameter = nn.Parameter(torch.ones(1) * 1.5)
 
     def run_offline_pipeline(self, n_trajectories: int = 1000) -> None:
         """
@@ -134,25 +137,41 @@ class CSAOEngine:
         )
 
         # Initialize SLM Embedder and pre-compute embeddings
-        print("[Engine] Initializing SLM Embedder and pre-computing item embeddings...")
+        print("[Engine] Initializing SLM Embedder and pre-computing item embeddings into simulated Redis (Fix 5)...")
         self.slm_embedder = SLMEmbedder(device=str(self.device))
         
-        # Create a unique list of items with cuisine/desc for SLM
-        # In this simulation, we'll just use the item_name and its cuisine from the corpus
         item_meta_df = self.corpus_df[["item_name", "cuisine"]].drop_duplicates("item_name")
-        # In a real system, we'd have descriptions; here we mock a simple one
         item_meta_df["description"] = item_meta_df["item_name"] + " from the menu."
         
         slm_embs = self.slm_embedder.generate_embeddings(item_meta_df)
-        for i, row in enumerate(item_meta_df.itertuples()):
-            self.item_slm_cache[row.item_name] = torch.tensor(
-                slm_embs[i], dtype=torch.float32, device=self.device
-            )
         
-        # Add a zero vector for padding/unknown
-        self.item_slm_cache["<PAD>"] = torch.zeros(384, dtype=torch.float32, device=self.device)
+        # Store in SimulatedRedisStore (Fix 5)
+        for i, row in enumerate(item_meta_df.itertuples()):
+            key = f"slm:{row.item_name}"
+            # Serialize numpy array to bytes
+            self.feature_store.set(key, slm_embs[i].tobytes())
+            
+        # Add PAD vector
+        self.feature_store.set("slm:<PAD>", np.zeros(384, dtype=np.float32).tobytes())
 
         print("[Engine] Offline initialization complete.")
+        
+    def _get_slm_batch(self, item_names: List[str]) -> torch.Tensor:
+        """Helper to fetch 384-d SLM vectors from Redis (Fix 5)."""
+        keys = [f"slm:{name}" for name in item_names]
+        # mget returns list of bytes or None
+        raw_values = []
+        for key in keys:
+            val = self.feature_store.get(key)
+            if val is not None:
+                raw_values.append(val)
+            else:
+                raw_values.append(self.feature_store.get("slm:<PAD>"))
+                
+        # Decode bytes back to numpy array
+        arrays = [np.frombuffer(val, dtype=np.float32) for val in raw_values]
+        tensors = [torch.tensor(arr, dtype=torch.float32, device=self.device) for arr in arrays]
+        return torch.stack(tensors)
 
     def train_system(self, epochs: int = 1, limit_batches: int = 50) -> None:
         """
@@ -212,12 +231,40 @@ class CSAOEngine:
             if len(traj_df) < 2:
                 continue
 
-            # Fake User History (Since we simulate single trajectories per user for simplicity here)
-            # We'll just pad zero history
-            hist_ids = torch.zeros((1, 1), dtype=torch.long, device=self.device)
-            hist_qty = torch.zeros((1, 1), dtype=torch.float32, device=self.device)
-            hist_slm = torch.zeros((1, 1, 384), dtype=torch.float32, device=self.device)
-            hist_lengths = torch.ones(1, dtype=torch.long, device=self.device)
+            # Define User History extraction (Fix 1)
+            # Find all prior trajectories for this user
+            curr_user_id = traj_df["user_id"].iloc[0]
+            curr_time_step = traj_df["time_step"].iloc[0] if "time_step" in traj_df else 0 # Assuming ordered
+            # We assume trajectory_ids are chronological
+            past_orders = self.corpus_df[
+                (self.corpus_df["user_id"] == curr_user_id) & 
+                (self.corpus_df["trajectory_id"] < traj_id)
+            ].sort_values("trajectory_id")
+
+            if len(past_orders) > 0:
+                # Take up to T=10 most recent items
+                recent_items = past_orders.tail(10)
+                hist_names = recent_items["item_name"].tolist()
+                hist_qtys = recent_items["quantity"].tolist()
+                
+                # Dynamic Length
+                actual_len = len(hist_names)
+                h_lens = torch.tensor([actual_len], dtype=torch.long, device=self.device)
+                
+                # Pad sequence to T=10
+                pad_len = 10 - actual_len
+                hist_names = hist_names + ["<PAD>"] * pad_len
+                hist_qtys = hist_qtys + [0.0] * pad_len
+                
+                h_ids = torch.tensor([self.item_to_idx.get(n, 0) for n in hist_names], dtype=torch.long, device=self.device).unsqueeze(0)
+                h_qty = torch.tensor(hist_qtys, dtype=torch.float32, device=self.device).unsqueeze(0)
+                h_slm = self._get_slm_batch(hist_names).unsqueeze(0)
+            else:
+                # New user, no history
+                h_ids = torch.zeros((1, 10), dtype=torch.long, device=self.device)
+                h_qty = torch.zeros((1, 10), dtype=torch.float32, device=self.device)
+                h_slm = torch.zeros((1, 10, 384), dtype=torch.float32, device=self.device)
+                h_lens = torch.ones(1, dtype=torch.long, device=self.device)
 
             cart_items = []
             cart_total = 0.0
@@ -274,23 +321,24 @@ class CSAOEngine:
                         cands.append(neg)
                 
                 cand_ids = torch.tensor([self.item_to_idx[c] for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
-                cand_slm = torch.stack([self.item_slm_cache.get(c, self.item_slm_cache["<PAD>"]) for c in cands]).unsqueeze(0)
+                cand_slm = self._get_slm_batch(cands).unsqueeze(0)
 
                 # Prepare Cart
                 cart_idx_seq = [self.item_to_idx.get(c["name"], 0) for c in cart_items]
                 cart_qty_seq = [c["quantity"] for c in cart_items]
+                cart_names = [c["name"] for c in cart_items]
                 
                 cart_t = torch.tensor(cart_idx_seq, dtype=torch.long, device=self.device).unsqueeze(0)
                 qty_t = torch.tensor(cart_qty_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
                 mask_t = torch.zeros(1, len(cart_idx_seq), dtype=torch.bool, device=self.device)
 
                 # Prepare Cart SLM
-                cart_slm = torch.stack([self.item_slm_cache.get(c["name"], self.item_slm_cache["<PAD>"]) for c in cart_items]).unsqueeze(0)
+                cart_slm = self._get_slm_batch(cart_names).unsqueeze(0)
 
                 # Forward pass
                 scores = self.neural_model(
                     cart_t, qty_t, cart_slm, mask_t,
-                    hist_ids, hist_qty, hist_slm, hist_lengths,
+                    h_ids, h_qty, h_slm, h_lens,
                     context_t, gap_t, cand_ids, cand_slm
                 )
 
@@ -306,18 +354,260 @@ class CSAOEngine:
                 batches_processed += 1
 
         print(f"[Engine] Backbone Training Complete. Processed {batches_processed} steps, Avg Loss: {total_loss/max(1, batches_processed):.4f}")
-
-        # LightGBM Re-Ranker Training
+        
         print("[Engine] Generating mock tabular features mixed with neural scores to train LightGBM...")
         self.neural_model.eval()
-        self.reranker = LightGBMReranker(k=8)
+        self.reranker = LightGBMReranker(k=10) # Set to 10 for validation extraction
         
-        # Simple mock feature generation mimicking the loop output
-        features, labels, groups = self.reranker.generate_mock_training_data(
-            n_queries=100, candidates_per_query=20, rng=self.rng
-        )
-        self.reranker.train(features, labels, groups)
+        # Call Temperature Calibration (Fix 3)
+        self.calibrate_temperature(limit_batches=10)
+        
+        # --------------------------------------------------------------------------------
+        # [Fix 2]: Train LightGBM on True Neural Features, Not Mock Data
+        # --------------------------------------------------------------------------------
+        print("[Engine] Extracting true neural scores on validation set for LightGBM...")
+        
+        lgb_features = []
+        lgb_labels = []
+        lgb_groups = []
+        
+        # We will use the remaining trajectories as validation
+        val_trajectory_ids = trajectory_ids[limit_batches : limit_batches + 20]
+        
+        for traj_id in val_trajectory_ids:
+            traj_df = self.corpus_df[self.corpus_df["trajectory_id"] == traj_id].sort_values("step_index")
+            if len(traj_df) < 2:
+                continue
+                
+            curr_user_id = traj_df["user_id"].iloc[0]
+            past_orders = self.corpus_df[
+                (self.corpus_df["user_id"] == curr_user_id) & 
+                (self.corpus_df["trajectory_id"] < traj_id)
+            ].sort_values("trajectory_id")
+
+            if len(past_orders) > 0:
+                recent_items = past_orders.tail(10)
+                hist_names = recent_items["item_name"].tolist()
+                hist_qtys = recent_items["quantity"].tolist()
+                actual_len = len(hist_names)
+                h_lens = torch.tensor([actual_len], dtype=torch.long, device=self.device)
+                pad_len = 10 - actual_len
+                hist_names = hist_names + ["<PAD>"] * pad_len
+                hist_qtys = hist_qtys + [0.0] * pad_len
+                h_ids = torch.tensor([self.item_to_idx.get(n, 0) for n in hist_names], dtype=torch.long, device=self.device).unsqueeze(0)
+                h_qty = torch.tensor(hist_qtys, dtype=torch.float32, device=self.device).unsqueeze(0)
+                h_slm = self._get_slm_batch(hist_names).unsqueeze(0)
+            else:
+                h_ids = torch.zeros((1, 10), dtype=torch.long, device=self.device)
+                h_qty = torch.zeros((1, 10), dtype=torch.float32, device=self.device)
+                h_slm = torch.zeros((1, 10, 384), dtype=torch.float32, device=self.device)
+                h_lens = torch.ones(1, dtype=torch.long, device=self.device)
+
+            cart_items = []
+            cart_total = 0.0
+            
+            for i in range(len(traj_df) - 1):
+                curr_row = traj_df.iloc[i]
+                next_row = traj_df.iloc[i + 1]
+
+                cart_items.append({
+                    "name": curr_row["item_name"],
+                    "category": curr_row["item_category"],
+                    "quantity": curr_row["quantity"],
+                    "unit_price": curr_row["item_price"],
+                })
+                cart_total += curr_row["quantity"] * curr_row["item_price"]
+
+                f_vec, segments = self.online_calculator.compute_feature_vector(
+                    user_id=int(curr_row["user_id"]),
+                    user_aov_ceiling=float(curr_row["aov_ceiling"]),
+                    cart_items=cart_items,
+                    cart_total=cart_total,
+                    cuisine=str(curr_row["cuisine"]),
+                    hour_of_day=int(curr_row["hour_of_day"]),
+                    day_of_week=0,
+                    is_weekend=bool(curr_row["is_weekend"]),
+                    city=str(curr_row["city"]),
+                    candidate_item_name=str(next_row["item_name"]),
+                    candidate_item_category=str(next_row["item_category"]),
+                )
+
+                ctx_cyc_h = f_vec[segments["ctx.cyclical_hour"][0]:segments["ctx.cyclical_hour"][1]]
+                ctx_cyc_d = f_vec[segments["ctx.cyclical_day"][0]:segments["ctx.cyclical_day"][1]]
+                ctx_type = f_vec[segments["ctx.day_type"][0]:segments["ctx.day_type"][1]]
+                ctx_wth = f_vec[segments["ctx.weather_proxy"][0]:segments["ctx.weather_proxy"][1]]
+                context = np.concatenate([ctx_cyc_h, ctx_cyc_d, ctx_type, ctx_wth])
+                context_t = torch.tensor(context, dtype=torch.float32, device=self.device).unsqueeze(0)
+
+                gap_start, gap_end = segments["cart.meal_gap_vector"]
+                gap = f_vec[gap_start:gap_end]
+                gap_t = torch.tensor(gap, dtype=torch.float32, device=self.device).unsqueeze(0)
+
+                target_item_name = next_row["item_name"]
+                
+                cands = [target_item_name]
+                while len(cands) < 10:
+                    neg = self.rng.choice(list(self.item_to_idx.keys()))
+                    if neg not in cands:
+                        cands.append(neg)
+                
+                cand_ids = torch.tensor([self.item_to_idx[c] for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
+                cand_slm = self._get_slm_batch(cands).unsqueeze(0)
+
+                cart_idx_seq = [self.item_to_idx.get(c["name"], 0) for c in cart_items]
+                cart_qty_seq = [c["quantity"] for c in cart_items]
+                cart_names = [c["name"] for c in cart_items]
+                
+                cart_t = torch.tensor(cart_idx_seq, dtype=torch.long, device=self.device).unsqueeze(0)
+                qty_t = torch.tensor(cart_qty_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
+                mask_t = torch.zeros(1, len(cart_idx_seq), dtype=torch.bool, device=self.device)
+                cart_slm = self._get_slm_batch(cart_names).unsqueeze(0)
+
+                with torch.no_grad():
+                    scores = self.neural_model(
+                        cart_t, qty_t, cart_slm, mask_t,
+                        h_ids, h_qty, h_slm, h_lens,
+                        context_t, gap_t, cand_ids, cand_slm
+                    )
+                    scores = scores / self.temperature # Apply Calibration
+                    
+                # Form LightGBM row
+                query_group_size = 0
+                for c_idx, cand_name in enumerate(cands):
+                    gfs_features = self.item_gen.compute_candidate_features(
+                        cand_name, "Unknown", gap, int(curr_row["hour_of_day"]), str(curr_row["city"])
+                    )
+                    
+                    gfs = float(gfs_features.get("gap_fill_score", [0.0])[0])
+                    velocity = float(gfs_features.get("zone_velocity", [0.0])[0])
+                    acc_rate = 0.4 # mock historical acceptance
+                    margin = 0.3 # Mock margin
+                    price_ratio = 100.0 / max(cart_total, 1.0)
+                    
+                    n_score = scores[0, c_idx].item()
+                    
+                    row = [n_score, gfs, margin, velocity, acc_rate, price_ratio]
+                    lgb_features.append(row)
+                    # Label: 1 if target, 0 if negative sample
+                    lgb_labels.append(1 if c_idx == 0 else 0)
+                    query_group_size += 1
+                
+                lgb_groups.append(query_group_size)
+
+        print(f"[Engine] Training LightGBM on {len(lgb_features)} True Validations Samples...")
+        X = np.array(lgb_features)
+        y = np.array(lgb_labels)
+        groups = np.array(lgb_groups)
+        self.reranker.train(X, y, groups)
+        
         print("[Engine] Model Training Orchestration Complete.")
+
+    def calibrate_temperature(self, limit_batches: int = 10) -> None:
+        """
+        [Fix 3]: Temperature Scaling Calibration
+        Optimize a single parameter T using L-BFGS to calibrate the logits.
+        """
+        print("\n[Engine] Starting Temperature Calibration (Stage 5) via L-BFGS...")
+        self.neural_model.eval()
+        
+        logits_list = []
+        labels_list = []
+        
+        trajectory_ids = self.corpus_df["trajectory_id"].unique()
+        self.rng.shuffle(trajectory_ids)
+        
+        for traj_id in trajectory_ids[:limit_batches]:
+            traj_df = self.corpus_df[self.corpus_df["trajectory_id"] == traj_id].sort_values("step_index")
+            if len(traj_df) < 2: continue
+            
+            curr_user_id = traj_df["user_id"].iloc[0]
+            past_orders = self.corpus_df[(self.corpus_df["user_id"] == curr_user_id) & (self.corpus_df["trajectory_id"] < traj_id)].sort_values("trajectory_id")
+
+            if len(past_orders) > 0:
+                recent_items = past_orders.tail(10)
+                hist_names = recent_items["item_name"].tolist()
+                hist_qtys = recent_items["quantity"].tolist()
+                actual_len = len(hist_names)
+                h_lens = torch.tensor([actual_len], dtype=torch.long, device=self.device)
+                pad_len = 10 - actual_len
+                hist_names = hist_names + ["<PAD>"] * pad_len
+                hist_qtys = hist_qtys + [0.0] * pad_len
+                h_ids = torch.tensor([self.item_to_idx.get(n, 0) for n in hist_names], dtype=torch.long, device=self.device).unsqueeze(0)
+                h_qty = torch.tensor(hist_qtys, dtype=torch.float32, device=self.device).unsqueeze(0)
+                h_slm = self._get_slm_batch(hist_names).unsqueeze(0)
+            else:
+                h_ids = torch.zeros((1, 10), dtype=torch.long, device=self.device)
+                h_qty = torch.zeros((1, 10), dtype=torch.float32, device=self.device)
+                h_slm = torch.zeros((1, 10, 384), dtype=torch.float32, device=self.device)
+                h_lens = torch.ones(1, dtype=torch.long, device=self.device)
+
+            cart_items = []
+            cart_total = 0.0
+            
+            for i in range(len(traj_df) - 1):
+                curr_row = traj_df.iloc[i]
+                next_row = traj_df.iloc[i + 1]
+                cart_items.append({"name": curr_row["item_name"], "category": curr_row["item_category"], "quantity": curr_row["quantity"], "unit_price": curr_row["item_price"]})
+                cart_total += curr_row["quantity"] * curr_row["item_price"]
+
+                f_vec, segments = self.online_calculator.compute_feature_vector(
+                    user_id=int(curr_row["user_id"]), user_aov_ceiling=float(curr_row["aov_ceiling"]),
+                    cart_items=cart_items, cart_total=cart_total, cuisine=str(curr_row["cuisine"]),
+                    hour_of_day=int(curr_row["hour_of_day"]), day_of_week=0, is_weekend=bool(curr_row["is_weekend"]),
+                    city=str(curr_row["city"]), candidate_item_name=str(next_row["item_name"]), candidate_item_category=str(next_row["item_category"])
+                )
+
+                ctx_cyc_h = f_vec[segments["ctx.cyclical_hour"][0]:segments["ctx.cyclical_hour"][1]]
+                ctx_cyc_d = f_vec[segments["ctx.cyclical_day"][0]:segments["ctx.cyclical_day"][1]]
+                ctx_type = f_vec[segments["ctx.day_type"][0]:segments["ctx.day_type"][1]]
+                ctx_wth = f_vec[segments["ctx.weather_proxy"][0]:segments["ctx.weather_proxy"][1]]
+                context = np.concatenate([ctx_cyc_h, ctx_cyc_d, ctx_type, ctx_wth])
+                context_t = torch.tensor(context, dtype=torch.float32, device=self.device).unsqueeze(0)
+                gap_t = torch.tensor(f_vec[segments["cart.meal_gap_vector"][0]:segments["cart.meal_gap_vector"][1]], dtype=torch.float32, device=self.device).unsqueeze(0)
+
+                target_item_name = next_row["item_name"]
+                cands = [target_item_name]
+                while len(cands) < 8:
+                    neg = self.rng.choice(list(self.item_to_idx.keys()))
+                    if neg not in cands: cands.append(neg)
+                
+                cand_ids = torch.tensor([self.item_to_idx[c] for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
+                cand_slm = self._get_slm_batch(cands).unsqueeze(0)
+                cart_idx_seq = [self.item_to_idx.get(c["name"], 0) for c in cart_items]
+                cart_qty_seq = [c["quantity"] for c in cart_items]
+                cart_t = torch.tensor(cart_idx_seq, dtype=torch.long, device=self.device).unsqueeze(0)
+                qty_t = torch.tensor(cart_qty_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
+                mask_t = torch.zeros(1, len(cart_idx_seq), dtype=torch.bool, device=self.device)
+                cart_slm = self._get_slm_batch([c["name"] for c in cart_items]).unsqueeze(0)
+
+                with torch.no_grad():
+                    scores = self.neural_model(
+                        cart_t, qty_t, cart_slm, mask_t,
+                        h_ids, h_qty, h_slm, h_lens,
+                        context_t, gap_t, cand_ids, cand_slm
+                    )
+                logits_list.append(scores)
+                # target is always 0 in this construction
+                labels_list.append(torch.zeros(1, dtype=torch.long, device=self.device))
+                
+        if not logits_list:
+            print("[Engine] Calibration skipped (insufficient validation data).")
+            return
+            
+        all_logits = torch.cat(logits_list, dim=0).to(self.device)
+        all_labels = torch.cat(labels_list, dim=0).to(self.device)
+        
+        optimizer = torch.optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
+        criterion = nn.CrossEntropyLoss()
+        
+        def eval():
+            optimizer.zero_grad()
+            loss = criterion(all_logits / self.temperature, all_labels)
+            loss.backward()
+            return loss
+            
+        optimizer.step(eval)
+        print(f"[Engine] Temperature calibration finished. T_opt = {self.temperature.item():.4f}")
 
     def predict_addon(
         self,
@@ -417,19 +707,19 @@ class CSAOEngine:
         qty_t = torch.tensor(cart_qty_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
         mask_t = torch.zeros(1, len(cart_idx_seq), dtype=torch.bool, device=self.device)
         
-        # History (empty)
-        hist_ids = torch.zeros((1, 1), dtype=torch.long, device=self.device)
-        hist_qty = torch.zeros((1, 1), dtype=torch.float32, device=self.device)
-        hist_lengths = torch.ones(1, dtype=torch.long, device=self.device)
-        
         # Candidate tensors: process all at once
         cand_idx_seq = [self.item_to_idx.get(cand, 0) for cand in candidates]
         cand_t = torch.tensor(cand_idx_seq, dtype=torch.long, device=self.device).unsqueeze(0)  # (1, K)
-        cand_slm = torch.stack([self.item_slm_cache.get(cand, self.item_slm_cache["<PAD>"]) for cand in candidates]).unsqueeze(0)
+        cand_slm = self._get_slm_batch(candidates).unsqueeze(0)
         
         # Additional tensors for SLM
-        cart_slm = torch.stack([self.item_slm_cache.get(c["name"], self.item_slm_cache["<PAD>"]) for c in cart_items]).unsqueeze(0)
-        hist_slm = torch.zeros((1, 1, 384), dtype=torch.float32, device=self.device)
+        cart_slm = self._get_slm_batch(cart_names).unsqueeze(0)
+        
+        # History (empty for new online request demo, ideally fetch via user_id)
+        hist_ids = torch.zeros((1, 10), dtype=torch.long, device=self.device)
+        hist_qty = torch.zeros((1, 10), dtype=torch.float32, device=self.device)
+        hist_slm = torch.zeros((1, 10, 384), dtype=torch.float32, device=self.device)
+        hist_lengths = torch.ones(1, dtype=torch.long, device=self.device)
 
         self.neural_model.eval()
         with torch.no_grad():
@@ -438,36 +728,106 @@ class CSAOEngine:
                 hist_ids, hist_qty, hist_slm, hist_lengths,
                 context_t, gap_t, cand_t, cand_slm
             )  # (1, K)
+            
+            # Apply Temperature scaling (Fix 3) to true probabilities
+            raw_logits = scores / self.temperature
+            probs = torch.softmax(raw_logits, dim=-1)[0].cpu().numpy()
         
         # --- Form Rerank Candidates ---
-        rerank_candidates = []
+        # [Fix 4A]: Wallet Cap Filter
+        margin_allowance = 50.0 # Define a reasonable buffer limit
+        valid_candidates = []
+        
         for i, cand in enumerate(candidates):
-            neural_score = scores[0, i].item()
+            gfs_features = self.item_gen.compute_candidate_features(
+                cand, "Unknown", gap, hour_of_day, city
+            )
             
-            # Fast sparse feature lookup
-            # Since generating full vector is slow, we lookup the components for tabular features directly
-            gfs_features = self.item_gen.compute_candidate_features(cand, "Unknown", gap, hour_of_day, city)
+            # Fetch specific item price from corpus or default mock
+            # In a real system, price comes from the catalog. Here we mock it.
+            price = 150.0 
             
+            if cart_total + price > user_aov + margin_allowance:
+                continue # Discard item if it exceeds wallet cap
+                
+            neural_prob = probs[i].item()
             gfs = float(gfs_features.get("gap_fill_score", [0.0])[0])
             velocity = float(gfs_features.get("zone_velocity", [0.0])[0])
             
             rc = RerankCandidate(
                 item_name=cand,
-                neural_score=neural_score,
+                neural_score=neural_prob, # Use calibrated probability
                 gap_fill_score=gfs,
                 item_margin=0.3,
                 zone_velocity=velocity,
                 acceptance_rate=0.4,
-                price_ratio=100.0 / max(cart_total, 1.0)
+                price_ratio=price / max(cart_total, 1.0)
             )
-            rerank_candidates.append(rc)
+            valid_candidates.append(rc)
                 
-        # Step D: Re-Ranking
-        ranked = self.reranker.rerank(rerank_candidates)
+        # Step D: LightGBM Re-Ranking (base score generation)
+        if not valid_candidates:
+            print("[Inference] predict_addon completed: 0 candidates passed Wallet Cap.")
+            return []
+            
+        ranked_base = self.reranker.rerank(valid_candidates)
+        
+        # [Fix 4B]: Maximal Marginal Relevance (MMR)
+        # i* = argmax[ lambda * P(i) * (1 + alpha * GFS(i)) - (1 - lambda) * max_j_in_R Sim(i, j) ]
+        lambda_param = 0.7
+        alpha_param = 0.2
+        k_target = min(8, len(ranked_base))
+        
+        # Prepare data for MMR math
+        cand_names = [item for item, _ in ranked_base]
+        cand_probs = {c.item_name: c.neural_score for c in valid_candidates}
+        cand_gfs = {c.item_name: c.gap_fill_score for c in valid_candidates}
+        
+        # Pre-fetch all 384-d SLM vectors for candidate similarity computations
+        cand_slm_pool = self._get_slm_batch(cand_names) # (Num_Cands, 384)
+        cand_slm_dict = {name: cand_slm_pool[idx] for idx, name in enumerate(cand_names)}
+        
+        selected_items = []
+        selected_scores = []
+        unselected_items = list(cand_names)
+        
+        for _ in range(k_target):
+            best_item = None
+            best_mmr_score = -float('inf')
+            
+            for item in unselected_items:
+                # Part 1: Relevance Trade-off
+                p_i = cand_probs[item]
+                gfs_i = cand_gfs[item]
+                relevance = lambda_param * p_i * (1.0 + alpha_param * gfs_i)
+                
+                # Part 2: Diversity Penalty
+                max_sim = 0.0
+                if selected_items:
+                    vec_i = cand_slm_dict[item]
+                    # Compute cosine similarity against all selected items
+                    sims = [torch.nn.functional.cosine_similarity(vec_i.unsqueeze(0), cand_slm_dict[j].unsqueeze(0)).item() for j in selected_items]
+                    max_sim = max(sims)
+                    
+                penalty = (1.0 - lambda_param) * max_sim
+                
+                # Final MMR Score for this iteration
+                mmr_score = relevance - penalty
+                
+                if mmr_score > best_mmr_score:
+                    best_mmr_score = mmr_score
+                    best_item = item
+            
+            if best_item is not None:
+                selected_items.append(best_item)
+                selected_scores.append(best_mmr_score)
+                unselected_items.remove(best_item)
+        
+        final_ranked = list(zip(selected_items, selected_scores))
         
         elapsed_ms = (time.perf_counter_ns() - t0) / 1e6
         print(f"[Inference] predict_addon completed in {elapsed_ms:.2f} ms")
-        return ranked
+        return final_ranked
 
 
 if __name__ == "__main__":
