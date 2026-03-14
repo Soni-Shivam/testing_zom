@@ -744,18 +744,26 @@ class CSAOEngine:
         self.item_to_idx = mappings["item_to_idx"]
         self.idx_to_item = mappings["idx_to_item"]
         self.item_prices = mappings["item_prices"]
-        print(f"  ✓ item_mappings loaded  ({len(self.item_to_idx)} items)")
+        print(f"   item_mappings loaded  ({len(self.item_to_idx)} items)")
 
         # ── 2. Item meta (for ColdStartRouter knowledge graph) ────────────────
         item_meta_path = os.path.join(artifact_dir, "item_meta.pkl")
         with open(item_meta_path, "rb") as f:
             self.item_meta = pickle.load(f)
-        print(f"  ✓ item_meta loaded      ({len(self.item_meta)} entries)")
+        print(f"   item_meta loaded      ({len(self.item_meta)} entries)")
 
         # ── 3. Corpus DataFrame (for feature store re-hydration) ──────────────
         corpus_path = os.path.join(artifact_dir, "corpus_df.parquet")
         self.corpus_df = pd.read_parquet(corpus_path)
-        print(f"  ✓ corpus_df loaded      ({len(self.corpus_df)} rows)")
+        print(f"   corpus_df loaded      ({len(self.corpus_df)} rows)")
+        # ── 3b. User Database re-hydration ────────────────────────────────────
+        user_db_path = os.path.join(artifact_dir, "user_db.pkl")
+        if os.path.exists(user_db_path):
+            with open(user_db_path, "rb") as f:
+                self.user_db = pickle.load(f)
+            print(f"   user_db loaded       ({len(self.user_db)} users)")
+        else:
+            print("   user_db.pkl not found. Falling back to default user dictionary.")
 
         # ── 4. Feature store re-hydration (NightlyOfflineJob + NearRealTimeJob) ─
         # These are fast in-memory operations (~1-3s total) and are REQUIRED because
@@ -774,7 +782,7 @@ class CSAOEngine:
             store=self.feature_store, corpus_df=self.corpus_df
         )
         self.item_gen = CandidateItemFeatureGenerator(corpus_df=self.corpus_df)
-        print("  ✓ feature store hydrated")
+        print("   feature store hydrated")
 
         # ── 5. ColdStartRouter re-build ───────────────────────────────────────
         print("  [Engine] Re-building ColdStartRouter from saved corpus...")
@@ -792,7 +800,7 @@ class CSAOEngine:
             user_cs=user_cs,
             config=COLDSTART_CONFIG,
         )
-        print("  ✓ ColdStartRouter ready")
+        print("   ColdStartRouter ready")
 
         # ── 6. SLM cache — replay bytes into feature_store ───────────────────
         slm_cache_path = os.path.join(artifact_dir, "slm_cache.pt")
@@ -800,7 +808,7 @@ class CSAOEngine:
         for key, value in slm_cache.items():
             # key is "slm:<item_name>"; set() prepends "default:" namespace
             self.feature_store.set(key, value)
-        print(f"  ✓ SLM cache replayed    ({len(slm_cache)} embeddings)")
+        print(f"   SLM cache replayed    ({len(slm_cache)} embeddings)")
 
         # ── 7. Neural model — instantiate architecture then load weights ──────
         num_items = len(self.item_to_idx) + 1  # 1-indexed, 0 = padding
@@ -822,21 +830,21 @@ class CSAOEngine:
         state_dict = torch.load(neural_model_path, map_location=self.device, weights_only=True)
         self.neural_model.load_state_dict(state_dict)
         self.neural_model.eval()
-        print("  ✓ neural_model loaded and set to eval()")
+        print("   neural_model loaded and set to eval()")
 
         # ── 8. Temperature scalar ─────────────────────────────────────────────
         temperature_path = os.path.join(artifact_dir, "temperature.pt")
         temp_tensor = torch.load(temperature_path, map_location=self.device, weights_only=True)
         self.temperature = nn.Parameter(temp_tensor.to(self.device))
-        print(f"  ✓ temperature loaded    (T = {self.temperature.item():.4f})")
+        print(f"   temperature loaded    (T = {self.temperature.item():.4f})")
 
         # ── 9. LightGBM Reranker ──────────────────────────────────────────────
         lgbm_path = os.path.join(artifact_dir, "lgbm_model.txt")
         self.reranker = LightGBMReranker(k=10)
         self.reranker.model = lgb.Booster(model_file=lgbm_path)
-        print("  ✓ LightGBM reranker loaded")
+        print("   LightGBM reranker loaded")
 
-        print("[Engine] ✅ All artifacts loaded. Engine is inference-ready.\n")
+        print("[Engine]  All artifacts loaded. Engine is inference-ready.\n")
 
     def predict_addon(
         self,
@@ -856,24 +864,28 @@ class CSAOEngine:
         """
         t0 = time.perf_counter_ns()
         
+        cart_names = [c["name"] for c in cart_items]
+        # Robust normalization for filtering
+        cart_names_norm = {c.lower().strip() for c in cart_names}
+        
         # Determine candidate items from restaurant menu
         if restaurant_cuisine in CUISINE_MENUS:
             menu = CUISINE_MENUS[restaurant_cuisine]
             menu_items = []
             for cat_items in menu.values():
                 for item in cat_items:
-                    if item["name"] not in [c["name"] for c in cart_items]:
+                    if item["name"].lower().strip() not in cart_names_norm:
                         menu_items.append(item["name"])
         else:
-            menu_items = list(self.item_to_idx.keys())[:20]
+            # If cuisine unknown, grab top 40 items from catalog minus cart
+            all_known = list(self.item_to_idx.keys())
+            menu_items = [i for i in all_known if i.lower().strip() not in cart_names_norm][:40]
 
-        cart_names = [c["name"] for c in cart_items]
-        
         # Fetch matching user profile
         if user_id not in self.user_db:
             self.user_db[user_id] = {"order_count": 0, "total_spend": 0.0, "mean_aov": 0.0, "past_ordered_items": [], "cuisine_counts": {}}
         profile = self.user_db[user_id]
-        
+
         # Step A: Cold-Start Routing
         # Use profile["order_count"] instead of 0 to enable Statefulness
         request = ColdStartRequest(
@@ -883,7 +895,7 @@ class CSAOEngine:
             restaurant_name=restaurant_name,
             restaurant_interaction_count=0, # Assume 0 to trigger rest cold start
             restaurant_menu=menu_items,
-            candidate_item_name=menu_items[0] if menu_items else "",
+            candidate_item_name=menu_items[0] if menu_items else "Dummy",
             candidate_item_has_interactions=True,
             cart_main_items=cart_names,
             cuisine=restaurant_cuisine,
@@ -902,7 +914,19 @@ class CSAOEngine:
                 
         # [Taxonomy Fix 4]: Taxonomy-Driven Candidate Generation (NO MAX CAP)
         # Score the entire eligible taxonomic pool; do NOT truncate to 20.
-        candidates = list(candidates_set)
+        
+        # Inject Beverages and Desserts explicitly to guarantee cross-selling entropy
+        for item in self.item_meta:
+            if item.get("category") in ["Beverages", "Desserts"]:
+                candidates_set.add(item["item_name"])
+                
+        # Mask out any items that are already in the cart (Final Pass)
+        candidates = [c for c in candidates_set if c.lower().strip() not in cart_names_norm]
+        if not candidates:
+            # Fallback just in case they added the entire menu to their cart
+            candidates = list(candidates_set)
+        
+        print(f"[Inference] predict_addon: Modeling {len(candidates)} candidates. Cart has: {cart_names}")
 
         # --- Batch Neural Scoring ---
         # 1. Compute context and gap once (they are independent of candidates)

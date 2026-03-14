@@ -330,7 +330,7 @@ if __name__ == "__main__":
     print(f"  → Actual Output Shape:   {tuple(scores.shape)}")
     
     if scores.shape == target_shape:
-        print("\n  [✓] Forward Pass Successfully completed matching Target Vocabulary without Shape Mismatches! ✅")
+        print("\n  [] Forward Pass Successfully completed matching Target Vocabulary without Shape Mismatches! ")
     else:
-        print("\n  [✗] Neural Projection Failed. Shape mismatch.")
+        print("\n  [] Neural Projection Failed. Shape mismatch.")
     print("=" * 70)

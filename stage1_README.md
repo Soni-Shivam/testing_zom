@@ -5,7 +5,7 @@ This repository implements **Stage 1** of a production-grade recommendation engi
 
 ---
 
-## 🚀 Overview
+##  Overview
 
 Unlike naive random data generators, this system uses a **four-level hierarchical model** to ensure that every generated session exhibits "Full-Sequence Dependency." This means the probability of adding an item $i_k$ depends on the complete set of previous items $\Phi_{k-1}$ and the contextual state of the session.
 
@@ -18,7 +18,7 @@ Unlike naive random data generators, this system uses a **four-level hierarchica
 
 ---
 
-## 🏗️ Architecture: The 4-Level Hierarchy
+##  Architecture: The 4-Level Hierarchy
 
 ### Level 1: User Archetype Assignment
 Users are drawn from a Categorical distribution. Each archetype (e.g., *FamilyOrder*) enforces specific constraints, such as high AOV ceilings and mandatory item quantities $q_k > 1$ for bulk orders.
@@ -34,7 +34,7 @@ Carts are filled progressively using **Meal Gap Vectors** (e.g., `{1 main, 1 sid
 
 ---
 
-## 💹 Validation Suite
+##  Validation Suite
 
 The system includes a `CorpusValidator` that runs three critical tests after generation:
 1. **Co-occurrence $\chi^2$ Test**: Compares generated item pairings (e.g., Burger-Fries) against a ground-truth matrix.
@@ -43,7 +43,7 @@ The system includes a `CorpusValidator` that runs three critical tests after gen
 
 ---
 
-## 🛠️ Setup & Installation
+##  Setup & Installation
 
 ### Prerequisites
 - Python 3.9+
@@ -62,7 +62,7 @@ The system includes a `CorpusValidator` that runs three critical tests after gen
 
 ---
 
-## 💻 Usage
+##  Usage
 
 To generate the synthetic training corpus and run the validation suite:
 
@@ -78,7 +78,7 @@ The system will:
 
 ---
 
-## 📂 Project Structure
+##  Project Structure
 
 ```text
 zoma-thon/
@@ -105,7 +105,7 @@ zoma-thon/
 
 ---
 
-## ⚖️ Realism Modifiers (Contextual Dependencies)
+##  Realism Modifiers (Contextual Dependencies)
 
 - **Peak-Hour Penalty**: Add-on probabilities are reduced by 15-20% during lunch/dinner rushes to simulate urgency.
 - **Price Anchoring**: Sharp drops in high-price item selection if the cart current total exceeds the user's AOV tier by 20%.

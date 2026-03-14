@@ -66,11 +66,11 @@ def demo_forward_pass(model, device):
     print(f"    candidate_ids:      {tuple(cand_ids.shape)}")
     print(f"\n  Output scores shape: {tuple(scores.shape)}")
     print(f"  Sample scores (batch 0): [{', '.join(f'{s:.4f}' for s in scores[0])}]")
-    print(f"  ⚡ Forward pass: {elapsed:.2f} ms")
+    print(f"   Forward pass: {elapsed:.2f} ms")
 
     # Verify output shape
     shape_ok = scores.shape == (B, K)
-    print(f"\n  [{'✓' if shape_ok else '✗'}] Output shape (B, K) = ({B}, {K}): {shape_ok}")
+    print(f"\n  [{'' if shape_ok else ''}] Output shape (B, K) = ({B}, {K}): {shape_ok}")
 
     return scores, shape_ok
 
@@ -121,7 +121,7 @@ def demo_permutation_invariance(model, device):
     print(f"\n  Original order:  {cart_ids[0].tolist()}")
     print(f"  Permuted order:  {cart_ids_perm[0].tolist()}")
     print(f"  Score diff (max): {diff:.8f}")
-    print(f"  [{'✓' if perm_ok else '✗'}] Permutation invariant (diff < 1e-4): {perm_ok}")
+    print(f"  [{'' if perm_ok else ''}] Permutation invariant (diff < 1e-4): {perm_ok}")
 
     return perm_ok
 
@@ -169,7 +169,7 @@ def demo_contrastive_pretrain(model, device):
         decreased = losses[-1] < losses[0]
         print(f"\n  Initial loss: {losses[0]:.4f}")
         print(f"  Final loss:   {losses[-1]:.4f}")
-        print(f"  [{'✓' if decreased else '✗'}] Loss decreased: {decreased}")
+        print(f"  [{'' if decreased else ''}] Loss decreased: {decreased}")
         return decreased
     return False
 
@@ -220,7 +220,7 @@ def demo_reranker():
         print(f"  {i+1:<6d} {name:<25s} {score:>8.4f}")
 
     k_ok = len(ranked) == 8
-    print(f"\n  [{'✓' if k_ok else '✗'}] Returned K={len(ranked)} candidates (expected 8)")
+    print(f"\n  [{'' if k_ok else ''}] Returned K={len(ranked)} candidates (expected 8)")
 
     return k_ok
 
@@ -267,11 +267,11 @@ def main():
 
     all_pass = True
     for name, passed in results.items():
-        status = "✓" if passed else "✗"
+        status = "" if passed else ""
         print(f"  [{status}] {name}")
         all_pass &= passed
 
-    outcome = "ALL CHECKS PASSED ✅" if all_pass else "SOME CHECKS FAILED ⚠️"
+    outcome = "ALL CHECKS PASSED " if all_pass else "SOME CHECKS FAILED "
     print(f"\n  {outcome}")
 
     print(f"\n{'=' * 70}")

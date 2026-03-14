@@ -52,7 +52,7 @@ def verify_results(result, config) -> bool:
         result.item_cold_start_triggered,
     ]
     flags_ok = all(tier_flags)
-    print(f"\n  [{'✓' if flags_ok else '✗'}] All three tiers triggered: {tier_flags}")
+    print(f"\n  [{'' if flags_ok else ''}] All three tiers triggered: {tier_flags}")
     all_pass &= flags_ok
 
     # Check 2: Transferred embedding is L2-normalized and non-zero
@@ -61,62 +61,62 @@ def verify_results(result, config) -> bool:
         norm = np.linalg.norm(emb)
         nonzero = np.any(emb != 0)
         emb_ok = abs(norm - 1.0) < 0.01 and nonzero
-        print(f"  [{'✓' if emb_ok else '✗'}] Embedding L2 norm = 1: ‖e‖ = {norm:.6f}, non-zero = {nonzero}")
+        print(f"  [{'' if emb_ok else ''}] Embedding L2 norm = 1: ‖e‖ = {norm:.6f}, non-zero = {nonzero}")
         all_pass &= emb_ok
 
         # Check neighbors were found
         n_neighbors = len(result.embedding_neighbors) if result.embedding_neighbors else 0
         nn_ok = n_neighbors > 0
-        print(f"  [{'✓' if nn_ok else '✗'}] Embedding neighbors found: {n_neighbors} (expected ≤ {config.nn_k})")
+        print(f"  [{'' if nn_ok else ''}] Embedding neighbors found: {n_neighbors} (expected ≤ {config.nn_k})")
         all_pass &= nn_ok
     else:
-        print(f"  [✗] No transferred embedding produced")
+        print(f"  [] No transferred embedding produced")
         all_pass = False
 
     # Check 3: KG recommendations filtered to restaurant menu
     if result.kg_seeded_recs is not None:
         n_recs = len(result.kg_seeded_recs)
         kg_ok = n_recs > 0
-        print(f"  [{'✓' if kg_ok else '✗'}] KG seeded recommendations: {n_recs} items")
+        print(f"  [{'' if kg_ok else ''}] KG seeded recommendations: {n_recs} items")
         if n_recs > 0:
             for item, weight in result.kg_seeded_recs:
                 w_ok = 0.0 <= weight <= 1.0
                 if not w_ok:
                     all_pass = False
-            print(f"  [✓] All KG weights ∈ [0, 1]")
+            print(f"  [] All KG weights ∈ [0, 1]")
         all_pass &= kg_ok
     else:
-        print(f"  [✗] No KG recommendations produced")
+        print(f"  [] No KG recommendations produced")
         all_pass = False
 
     # Check 4: Bayesian posterior sums to 1.0
     if result.archetype_posterior is not None:
         posterior_sum = sum(result.archetype_posterior.values())
         post_ok = abs(posterior_sum - 1.0) < 0.001
-        print(f"  [{'✓' if post_ok else '✗'}] Posterior Σ = 1: Σ = {posterior_sum:.6f}")
+        print(f"  [{'' if post_ok else ''}] Posterior Σ = 1: Σ = {posterior_sum:.6f}")
         all_pass &= post_ok
 
         # Check that posterior differs from prior (Bayesian update worked)
         prior_probs = [0.35, 0.15, 0.30, 0.20]  # Budget, Premium, Occ, Family
         post_vals = list(result.archetype_posterior.values())
         shifted = any(abs(p - pr) > 0.01 for p, pr in zip(post_vals, prior_probs))
-        print(f"  [{'✓' if shifted else '✗'}] Posterior shifted from prior: {shifted}")
+        print(f"  [{'' if shifted else ''}] Posterior shifted from prior: {shifted}")
         all_pass &= shifted
     else:
-        print(f"  [✗] No archetype posterior produced")
+        print(f"  [] No archetype posterior produced")
         all_pass = False
 
     # Check 5: City popularity fallback returned results
     if result.city_popularity_recs is not None:
         n_pop = len(result.city_popularity_recs)
         pop_ok = n_pop > 0
-        print(f"  [{'✓' if pop_ok else '✗'}] City popularity fallback: {n_pop} items")
+        print(f"  [{'' if pop_ok else ''}] City popularity fallback: {n_pop} items")
         all_pass &= pop_ok
     else:
-        print(f"  [✗] No city popularity fallback")
+        print(f"  [] No city popularity fallback")
         all_pass = False
 
-    outcome = "ALL CHECKS PASSED ✅" if all_pass else "SOME CHECKS FAILED ⚠️"
+    outcome = "ALL CHECKS PASSED " if all_pass else "SOME CHECKS FAILED "
     print(f"\n  {outcome}")
     return all_pass
 

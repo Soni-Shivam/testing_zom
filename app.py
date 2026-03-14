@@ -6,7 +6,7 @@ import numpy as np
 from engine import CSAOEngine
 from csao.config.taxonomies import CUISINE_MENUS
 
-st.set_page_config(page_title="Zomato CSAO Super Add-On", layout="wide", page_icon="🛒")
+st.set_page_config(page_title="Zomato CSAO Super Add-On", layout="wide", page_icon="")
 
 # ==========================================
 # 1. Model Initialization
@@ -23,7 +23,7 @@ def load_engine():
     """
     if not os.path.isdir(ARTIFACT_DIR):
         st.error(
-            "❌ **Artifacts not found.** "
+            " **Artifacts not found.** "
             "The model has not been trained yet. "
             "Please run the following command in your terminal first:\n\n"
             "```bash\n"
@@ -44,12 +44,19 @@ with st.spinner("Booting up backend Hybrid Engine..."):
 # ==========================================
 # 2. Session State Management
 # ==========================================
+import copy
+
 if "cart" not in st.session_state:
     st.session_state.cart = []
 if "debug_payload" not in st.session_state:
     st.session_state.debug_payload = None
 if "ranked_candidates" not in st.session_state:
     st.session_state.ranked_candidates = []
+if "needs_addon_refresh" not in st.session_state:
+    st.session_state.needs_addon_refresh = False
+if "user_db" not in st.session_state:
+    # Deepcopy the cached global user_db into this specific browser session
+    st.session_state.user_db = copy.deepcopy(engine.user_db)
 
 def add_to_cart(item_name: str, category: str, price: float):
     for item in st.session_state.cart:
@@ -57,6 +64,7 @@ def add_to_cart(item_name: str, category: str, price: float):
             item["quantity"] += 1
             st.session_state.debug_payload = None
             st.session_state.ranked_candidates = []
+            st.session_state.needs_addon_refresh = True
             return
     st.session_state.cart.append({
         "name": item_name,
@@ -66,17 +74,19 @@ def add_to_cart(item_name: str, category: str, price: float):
     })
     st.session_state.debug_payload = None
     st.session_state.ranked_candidates = []
+    st.session_state.needs_addon_refresh = True
 
 def clear_cart():
     st.session_state.cart = []
     st.session_state.debug_payload = None
     st.session_state.ranked_candidates = []
+    st.session_state.needs_addon_refresh = False
 
 # ==========================================
 # 3. Sidebar User Switcher & Dashboard
 # ==========================================
 with st.sidebar:
-    st.header("👤 Active User Simulator")
+    st.header(" Active User Simulator")
     user_options = {
         1: "New User (0 Orders)",
         2: "Regular User (4 Orders)",
@@ -84,13 +94,14 @@ with st.sidebar:
     }
     sel_user_id = st.selectbox("Select Active User", options=list(user_options.keys()), format_func=lambda x: user_options[x], index=0)
     
-    profile = engine.user_db.get(sel_user_id, {"order_count": 0, "mean_aov": 0.0, "cuisine_counts": {}})
+    # Fetch from isolated session state user_db
+    profile = st.session_state.user_db.get(sel_user_id, {"order_count": 0, "mean_aov": 0.0, "cuisine_counts": {}})
     top_cuisine = "None"
     if profile["cuisine_counts"]:
         top_cuisine = max(profile["cuisine_counts"], key=profile["cuisine_counts"].get)
         
     st.divider()
-    st.subheader("📊 User Profile")
+    st.subheader(" User Profile")
     st.metric("Total Orders", profile["order_count"])
     st.metric("Average Order Value (AOV)", f"₹{profile['mean_aov']:.2f}")
     st.metric("Top Cuisine", top_cuisine)
@@ -98,9 +109,9 @@ with st.sidebar:
 # ==========================================
 # 4. Global Context
 # ==========================================
-st.title("🛒 Zomato Smart Cart & Add-Ons")
+st.title(" Zomato Smart Cart & Add-Ons")
 
-with st.expander("⚙️ Shopping Environment Settings (City, Time)", expanded=False):
+with st.expander(" Shopping Environment Settings (City, Time)", expanded=False):
     c1, c2, c3 = st.columns(3)
     with c1:
         sel_city = st.selectbox("City", ["Delhi-NCR", "Mumbai", "Bangalore"])
@@ -119,13 +130,13 @@ col1, col2 = st.columns([2, 1])
 
 # --- LEFT COLUMN: Restaurant Menu ---
 with col1:
-    st.header("🍽️ Complete Menu Catalog")
+    st.header(" Complete Menu Catalog")
     st.caption("Showing items from all available restaurants and cuisines")
     
     for cuisine_name, menu_data in CUISINE_MENUS.items():
-        st.subheader(f"🏪 {cuisine_name} Restaurant")
+        st.subheader(f" {cuisine_name} Restaurant")
         for category, items in menu_data.items():
-            with st.expander(f"🥘 {cuisine_name} - {category.capitalize()}", expanded=False):
+            with st.expander(f" {cuisine_name} - {category.capitalize()}", expanded=False):
                 cols_per_row = 3
                 for i in range(0, len(items), cols_per_row):
                     row_cols = st.columns(cols_per_row)
@@ -149,7 +160,7 @@ with col1:
 
 # --- RIGHT COLUMN: Live Cart ---
 with col2:
-    st.header("🛒 Current Cart")
+    st.header(" Current Cart")
     
     total_value = sum(item["quantity"] * item["unit_price"] for item in st.session_state.cart)
     
@@ -177,7 +188,9 @@ with col2:
                         inferred_rest_name = f"{c_name} Restaurant"
                         break
 
-        # Calculate inferred Meal Template categories
+        # Fix 4: Use a valid canonical item name instead of "" to prevent KeyError
+        dummy_item = list(engine.item_to_idx.keys())[0] if engine.item_to_idx else "Unknown Item"
+        
         f_vec, segments = engine.online_calculator.compute_feature_vector(
             user_id=sel_user_id,
             user_aov_ceiling=800.0,
@@ -188,8 +201,8 @@ with col2:
             day_of_week=sel_day,
             is_weekend=sel_is_weekend,
             city=sel_city,
-            candidate_item_name="",
-            candidate_item_category=""
+            candidate_item_name=dummy_item,
+            candidate_item_category="Dummy"
         )
         gap_start, gap_end = segments["cart.meal_gap_vector"]
         gap = f_vec[gap_start:gap_end]
@@ -197,34 +210,41 @@ with col2:
         
         c_btn1, c_btn2 = st.columns(2)
         with c_btn1:
-            st.button("🗑️ Clear Cart", on_click=clear_cart, use_container_width=True)
+            st.button(" Clear Cart", on_click=clear_cart, use_container_width=True)
         with c_btn2:
             def place_checkout():
                 if len(st.session_state.cart) > 0:
+                    # Fix 3: Temporarily inject session explicitly before mutation
+                    engine.user_db = st.session_state.user_db
                     engine.place_order(sel_user_id, st.session_state.cart, total_value, inferred_cuisine)
                     clear_cart()
                     
-            if st.button("🛒 Checkout & Place Order", type="primary", use_container_width=True, on_click=place_checkout):
-                st.toast("Order Placed Successfully! User History updated.", icon="🎉")
+            if st.button(" Checkout & Place Order", type="primary", use_container_width=True, on_click=place_checkout):
+                st.toast("Order Placed Successfully! User History updated.", icon="")
         
         st.divider()
         if len(st.session_state.cart) > 0:
-            with st.spinner("AI actively analyzing cart and user history..."):
-                ranked, debug = engine.predict_addon(
-                    user_id=sel_user_id,
-                    cart_items=st.session_state.cart,
-                    restaurant_id="rest_ui_global",
-                    restaurant_name=inferred_rest_name,
-                    restaurant_cuisine=inferred_cuisine,
-                    city=sel_city,
-                    hour_of_day=sel_hour,
-                    day_of_week=sel_day,
-                    is_weekend=sel_is_weekend
-                )
-                st.session_state.ranked_candidates = ranked
-                st.session_state.debug_payload = debug
+            if st.session_state.needs_addon_refresh:
+                with st.spinner("AI actively analyzing cart and user history..."):
+                    # Fix 3: Inject session state DB for read paths too
+                    engine.user_db = st.session_state.user_db
+                    ranked, debug = engine.predict_addon(
+                        user_id=sel_user_id,
+                        cart_items=st.session_state.cart,
+                        restaurant_id="rest_ui_global",
+                        restaurant_name=inferred_rest_name,
+                        restaurant_cuisine=inferred_cuisine,  # Restore cuisine context
+                        city=sel_city,
+                        hour_of_day=sel_hour,
+                        day_of_week=sel_day,
+                        is_weekend=sel_is_weekend
+                    )
+                    st.session_state.ranked_candidates = ranked
+                    st.session_state.debug_payload = debug
+                    st.session_state.needs_addon_refresh = False
 
-            st.subheader("✨ You might also like...")
+            if st.session_state.ranked_candidates:
+                st.subheader(" You might also like...")
             for idx, (rec_item, score) in enumerate(st.session_state.ranked_candidates[:5]):
                 with st.container(border=True):
                     rec_price = 150.0 
@@ -249,7 +269,7 @@ with col2:
 # 5. Verbose Logging View
 # ==========================================
 st.divider()
-st.header("🔬 Pipeline Execution Logs")
+st.header(" Pipeline Execution Logs")
 if st.session_state.debug_payload:
     dbg = st.session_state.debug_payload
     

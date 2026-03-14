@@ -22,16 +22,16 @@ A four-domain feature engineering pipeline with a three-tier feature store archi
 | NearRealTimeJob | 558 zone-velocity entries | 0.02s |
 | OnlinePerRequest | 171-dim vector | **318 µs** |
 
-## Verification — **6/6 PASS** ✅
+## Verification — **6/6 PASS** 
 
 | Check | Result |
 |-------|--------|
-| Herfindahl D ∈ [0,1] | D = 0.5986 ✓ |
-| Cyclical hour sin²+cos²=1 | 1.000000 ✓ |
-| Cyclical day sin²+cos²=1 | 1.000000 ✓ |
-| SLM embedding ‖v‖₂=1 | 1.000000 ✓ |
-| PAR ≥ 0 | 2.8584 ✓ |
-| Cuisine pref Σ=1 | 1.000000 ✓ |
+| Herfindahl D ∈ [0,1] | D = 0.5986  |
+| Cyclical hour sin²+cos²=1 | 1.000000  |
+| Cyclical day sin²+cos²=1 | 1.000000  |
+| SLM embedding ‖v‖₂=1 | 1.000000  |
+| PAR ≥ 0 | 2.8584  |
+| Cuisine pref Σ=1 | 1.000000  |
 
 ## How to Run
 

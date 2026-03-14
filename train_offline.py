@@ -78,20 +78,20 @@ def main() -> None:
     # 4a. PyTorch neural model weights
     neural_model_path = os.path.join(ARTIFACT_DIR, "neural_model.pt")
     torch.save(engine.neural_model.state_dict(), neural_model_path)
-    print(f"  ✓ neural_model.pt  ({os.path.getsize(neural_model_path) / 1024:.1f} KB)")
+    print(f"   neural_model.pt  ({os.path.getsize(neural_model_path) / 1024:.1f} KB)")
 
     # 4b. Learned temperature scalar (nn.Parameter)
     temperature_path = os.path.join(ARTIFACT_DIR, "temperature.pt")
     torch.save(engine.temperature.data, temperature_path)
-    print(f"  ✓ temperature.pt")
+    print(f"   temperature.pt")
 
     # 4c. LightGBM booster (text format — portable, human-readable)
     lgbm_path = os.path.join(ARTIFACT_DIR, "lgbm_model.txt")
     if engine.reranker is not None and engine.reranker.model is not None:
         engine.reranker.model.save_model(lgbm_path)
-        print(f"  ✓ lgbm_model.txt   ({os.path.getsize(lgbm_path) / 1024:.1f} KB)")
+        print(f"   lgbm_model.txt   ({os.path.getsize(lgbm_path) / 1024:.1f} KB)")
     else:
-        print("  ⚠ LightGBM model is None — skipping lgbm_model.txt")
+        print("   LightGBM model is None — skipping lgbm_model.txt")
 
     # 4d. SLM embedding cache
     # The SimulatedRedisStore holds SLM vectors as raw bytes at keys "slm:<item_name>".
@@ -105,7 +105,7 @@ def main() -> None:
             slm_cache[bare_key] = value              # value is bytes
     slm_cache_path = os.path.join(ARTIFACT_DIR, "slm_cache.pt")
     torch.save(slm_cache, slm_cache_path)
-    print(f"  ✓ slm_cache.pt     ({len(slm_cache)} entries, "
+    print(f"   slm_cache.pt     ({len(slm_cache)} entries, "
           f"{os.path.getsize(slm_cache_path) / 1024:.1f} KB)")
 
     # 4e. item_to_idx / idx_to_item / item_prices
@@ -117,23 +117,30 @@ def main() -> None:
     mappings_path = os.path.join(ARTIFACT_DIR, "item_mappings.pkl")
     with open(mappings_path, "wb") as f:
         pickle.dump(mappings, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"  ✓ item_mappings.pkl ({len(engine.item_to_idx)} items, "
+    print(f"   item_mappings.pkl ({len(engine.item_to_idx)} items, "
           f"{os.path.getsize(mappings_path) / 1024:.1f} KB)")
 
     # 4f. item_meta list (needed to re-build ColdStartRouter at serve time)
     item_meta_path = os.path.join(ARTIFACT_DIR, "item_meta.pkl")
     with open(item_meta_path, "wb") as f:
         pickle.dump(engine.item_meta, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"  ✓ item_meta.pkl    ({len(engine.item_meta)} entries)")
+    print(f"   item_meta.pkl    ({len(engine.item_meta)} entries)")
 
     # 4g. Corpus DataFrame (Parquet — fast, columnar, small)
     corpus_path = os.path.join(ARTIFACT_DIR, "corpus_df.parquet")
     engine.corpus_df.to_parquet(corpus_path, index=False)
-    print(f"  ✓ corpus_df.parquet ({len(engine.corpus_df)} rows, "
+    print(f"   corpus_df.parquet ({len(engine.corpus_df)} rows, "
           f"{os.path.getsize(corpus_path) / 1024:.1f} KB)")
 
+    # 4h. Synthetic User DB containing order history / behavior profiles
+    user_db_path = os.path.join(ARTIFACT_DIR, "user_db.pkl")
+    with open(user_db_path, "wb") as f:
+        pickle.dump(engine.user_db, f, protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"   user_db.pkl      ({len(engine.user_db)} users, "
+          f"{os.path.getsize(user_db_path) / 1024:.1f} KB)")
+
     elapsed = time.time() - t_start
-    print(f"\n[train_offline] ✅ All artifacts saved in {elapsed:.1f}s → {ARTIFACT_DIR}")
+    print(f"\n[train_offline]  All artifacts saved in {elapsed:.1f}s → {ARTIFACT_DIR}")
     print("  You can now launch: streamlit run app.py")
 
 

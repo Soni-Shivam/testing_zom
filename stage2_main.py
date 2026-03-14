@@ -53,7 +53,7 @@ def verify_features(feature_vector: np.ndarray, segments: dict) -> None:
     d_start, d_end = segments["cart.cart_diversity"]
     diversity = feature_vector[d_start:d_end][0]
     d_ok = 0.0 <= diversity <= 1.0
-    print(f"\n  [{'✓' if d_ok else '✗'}] Cart Diversity D ∈ [0,1]: D = {diversity:.4f}")
+    print(f"\n  [{'' if d_ok else ''}] Cart Diversity D ∈ [0,1]: D = {diversity:.4f}")
     all_pass &= d_ok
 
     # Check 2: Cyclical encoding sin²+cos² = 1
@@ -61,14 +61,14 @@ def verify_features(feature_vector: np.ndarray, segments: dict) -> None:
     hour_vec = feature_vector[h_start:h_end]
     sin_cos_sum = hour_vec[0]**2 + hour_vec[1]**2
     cyc_ok = abs(sin_cos_sum - 1.0) < 1e-5
-    print(f"  [{'✓' if cyc_ok else '✗'}] Cyclical hour sin²+cos² = 1: {sin_cos_sum:.6f}")
+    print(f"  [{'' if cyc_ok else ''}] Cyclical hour sin²+cos² = 1: {sin_cos_sum:.6f}")
     all_pass &= cyc_ok
 
     d_start, d_end = segments["ctx.cyclical_day"]
     day_vec = feature_vector[d_start:d_end]
     sin_cos_sum_d = day_vec[0]**2 + day_vec[1]**2
     cyc_d_ok = abs(sin_cos_sum_d - 1.0) < 1e-5
-    print(f"  [{'✓' if cyc_d_ok else '✗'}] Cyclical day sin²+cos² = 1:  {sin_cos_sum_d:.6f}")
+    print(f"  [{'' if cyc_d_ok else ''}] Cyclical day sin²+cos² = 1:  {sin_cos_sum_d:.6f}")
     all_pass &= cyc_d_ok
 
     # Check 3: SLM embedding is L2-normalized
@@ -76,14 +76,14 @@ def verify_features(feature_vector: np.ndarray, segments: dict) -> None:
     emb = feature_vector[e_start:e_end]
     emb_norm = np.linalg.norm(emb)
     emb_ok = abs(emb_norm - 1.0) < 0.01
-    print(f"  [{'✓' if emb_ok else '✗'}] SLM embedding L2 norm = 1:  {emb_norm:.6f}")
+    print(f"  [{'' if emb_ok else ''}] SLM embedding L2 norm = 1:  {emb_norm:.6f}")
     all_pass &= emb_ok
 
     # Check 4: PAR >= 0
     par_start, par_end = segments["cart.price_anchor_ratio"]
     par = feature_vector[par_start:par_end][0]
     par_ok = par >= 0.0
-    print(f"  [{'✓' if par_ok else '✗'}] Price Anchor Ratio ≥ 0:    PAR = {par:.4f}")
+    print(f"  [{'' if par_ok else ''}] Price Anchor Ratio ≥ 0:    PAR = {par:.4f}")
     all_pass &= par_ok
 
     # Check 5: Cuisine preference sums to ~1
@@ -91,10 +91,10 @@ def verify_features(feature_vector: np.ndarray, segments: dict) -> None:
     cp = feature_vector[cp_start:cp_end]
     cp_sum = cp.sum()
     cp_ok = abs(cp_sum - 1.0) < 0.01
-    print(f"  [{'✓' if cp_ok else '✗'}] Cuisine preference Σ = 1:  Σ = {cp_sum:.6f}")
+    print(f"  [{'' if cp_ok else ''}] Cuisine preference Σ = 1:  Σ = {cp_sum:.6f}")
     all_pass &= cp_ok
 
-    overall = "ALL CHECKS PASSED ✅" if all_pass else "SOME CHECKS FAILED ⚠️"
+    overall = "ALL CHECKS PASSED " if all_pass else "SOME CHECKS FAILED "
     print(f"\n  {overall}")
 
 
@@ -219,7 +219,7 @@ def main():
     elapsed_ns = time.perf_counter_ns() - t0
     elapsed_us = elapsed_ns / 1000.0
 
-    print(f"\n  ⚡ Online computation time: {elapsed_us:.1f} µs ({elapsed_us / 1000:.3f} ms)")
+    print(f"\n   Online computation time: {elapsed_us:.1f} µs ({elapsed_us / 1000:.3f} ms)")
 
     # ── Step 6: Print feature breakdown ──────────────────────────────
     print_feature_breakdown(feature_vector, segments)

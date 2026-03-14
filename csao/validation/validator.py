@@ -156,7 +156,7 @@ class CorpusValidator:
             }
             results_per_pair.append(pair_result)
 
-            status = "✓" if significant else "✗"
+            status = "" if significant else ""
             print(
                 f"  {status} {item_a:35s} ↔ {item_b:20s}  "
                 f"co-occ={co_occurrence_rate:.1%}  χ²={chi2:8.1f}  "
@@ -275,7 +275,7 @@ class CorpusValidator:
             total_filled += s["filled"]
             total_all += s["total"]
 
-            status = "✓" if rate >= 0.50 else "△"
+            status = "" if rate >= 0.50 else "△"
             print(f"  {status} {cuisine:20s}  {rate:.1%}  ({s['filled']}/{s['total']})")
 
         overall_rate = total_filled / max(total_all, 1)
