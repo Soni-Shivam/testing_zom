@@ -15,11 +15,14 @@ This engine serves as the unified class containing:
 """
 
 import os
+import sys
 import time
+import pickle
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import lightgbm as lgb
 from typing import List, Dict, Tuple, Optional
 
 # --- Stage 1 Imports ---
@@ -87,6 +90,8 @@ class CSAOEngine:
         # Stage 4 Models
         self.item_to_idx: Dict[str, int] = {}
         self.idx_to_item: Dict[int, str] = {}
+        self.item_meta: List[Dict] = []          # Rich item metadata (loaded from taxonomy)
+        self.item_prices: Dict[str, float] = {}  # Global catalog prices
         self.neural_model: Optional[CSAOHybridModel] = None
         self.reranker: Optional[LightGBMReranker] = None
 
@@ -99,7 +104,8 @@ class CSAOEngine:
         # We will use self.feature_store for SLM (Fix 5)
         
         # Temperature Calibration (Fix 3)
-        self.temperature: nn.Parameter = nn.Parameter(torch.ones(1) * 1.5)
+        self.temperature: nn.Parameter = nn.Parameter(torch.ones(1, device=self.device) * 1.5)
+
 
     def place_order(self, user_id: int, cart_items: List[Dict[str, any]], cart_total: float, cuisine: str = "Unknown") -> None:
         """Saves a completed order to the user's history in the in-memory database."""
@@ -142,14 +148,16 @@ class CSAOEngine:
             self.corpus_df.to_csv(csv_path, index=False)
         
         # [Taxonomy Fix 1]: Global Vocabulary Initialization
-        print("[Engine] Establishing global vocabulary and semantic index from pure taxonomies...")
+        print("[Engine] Establishing global vocabulary, semantic index, and price maps from taxonomies...")
         canonical_items = set()
         self.item_meta = [] # Store rich metadata for SLM
+        self.item_prices = {} # TRUE Global Catalog Prices
         
         for cuisine, categories in CUISINE_MENUS.items():
             for category, items in categories.items():
                 for item in items:
                     name = item["name"]
+                    self.item_prices[name] = float(item.get("price", 150.0))
                     if name not in canonical_items:
                         canonical_items.add(name)
                         self.item_meta.append({
@@ -213,6 +221,18 @@ class CSAOEngine:
 
         print("[Engine] Offline initialization complete.")
         
+    def _mock_item_feature(self, item_name: str, feature_type: str) -> float:
+        """Helper to generate deterministic mock features based on item name."""
+        import hashlib
+        hash_val = int(hashlib.md5(f"{item_name}_{feature_type}".encode()).hexdigest(), 16)
+        if feature_type == "price":
+            return float(50.0 + (hash_val % 450)) # ₹50 to ₹500
+        elif feature_type == "margin":
+            return float(0.1 + (hash_val % 40) / 100.0) # 0.1 to 0.5
+        elif feature_type == "acc_rate":
+            return float(0.2 + (hash_val % 60) / 100.0) # 0.2 to 0.8
+        return 0.5
+
     def _get_slm_batch(self, item_names: List[str]) -> torch.Tensor:
         """Helper to fetch 384-d SLM vectors from Redis (Fix 5)."""
         keys = [f"slm:{name}" for name in item_names]
@@ -283,7 +303,9 @@ class CSAOEngine:
         batches_processed = 0
         total_loss = 0.0
 
-        for traj_id in trajectory_ids[:limit_batches]:
+        from tqdm import tqdm
+        target_trajectories = trajectory_ids[:limit_batches] if limit_batches else trajectory_ids
+        for traj_id in tqdm(target_trajectories, desc="Backbone Training", dynamic_ncols=True):
             traj_df = self.corpus_df[self.corpus_df["trajectory_id"] == traj_id].sort_values("step_index")
             if len(traj_df) < 2:
                 continue
@@ -310,8 +332,8 @@ class CSAOEngine:
                 
                 # Pad sequence to T=10
                 pad_len = 10 - actual_len
-                hist_names = hist_names + ["<PAD>"] * pad_len
-                hist_qtys = hist_qtys + [0.0] * pad_len
+                hist_names = ["<PAD>"] * pad_len + hist_names
+                hist_qtys = [0.0] * pad_len + hist_qtys
                 
                 h_ids = torch.tensor([self.item_to_idx.get(n, 0) for n in hist_names], dtype=torch.long, device=self.device).unsqueeze(0)
                 h_qty = torch.tensor(hist_qtys, dtype=torch.float32, device=self.device).unsqueeze(0)
@@ -431,7 +453,16 @@ class CSAOEngine:
         lgb_groups = []
         
         # We will use the remaining trajectories as validation
-        val_trajectory_ids = trajectory_ids[limit_batches : limit_batches + 20]
+        # If limit_batches is None, we trained on all of them. To get validation data, we'll
+        # just pick the last 20 trajectories from the full list.
+        if limit_batches is None:
+            val_start_idx = len(trajectory_ids) - 20
+            val_end_idx = len(trajectory_ids)
+        else:
+            val_start_idx = limit_batches
+            val_end_idx = limit_batches + 20
+            
+        val_trajectory_ids = trajectory_ids[val_start_idx : val_end_idx]
         
         for traj_id in val_trajectory_ids:
             traj_df = self.corpus_df[self.corpus_df["trajectory_id"] == traj_id].sort_values("step_index")
@@ -451,8 +482,8 @@ class CSAOEngine:
                 actual_len = len(hist_names)
                 h_lens = torch.tensor([actual_len], dtype=torch.long, device=self.device)
                 pad_len = 10 - actual_len
-                hist_names = hist_names + ["<PAD>"] * pad_len
-                hist_qtys = hist_qtys + [0.0] * pad_len
+                hist_names = ["<PAD>"] * pad_len + hist_names
+                hist_qtys = [0.0] * pad_len + hist_qtys
                 h_ids = torch.tensor([self.item_to_idx.get(n, 0) for n in hist_names], dtype=torch.long, device=self.device).unsqueeze(0)
                 h_qty = torch.tensor(hist_qtys, dtype=torch.float32, device=self.device).unsqueeze(0)
                 h_slm = self._get_slm_batch(hist_names).unsqueeze(0)
@@ -541,16 +572,26 @@ class CSAOEngine:
                     
                     gfs = float(gfs_features.get("gap_fill_score", [0.0])[0])
                     velocity = float(gfs_features.get("zone_velocity", [0.0])[0])
-                    acc_rate = 0.4 # mock historical acceptance
-                    margin = 0.3 # Mock margin
-                    price_ratio = 100.0 / max(cart_total, 1.0)
+                    acc_rate = self._mock_item_feature(cand_name, "acc_rate")
+                    margin = self._mock_item_feature(cand_name, "margin")
+                    price = self._mock_item_feature(cand_name, "price")
+                    price_ratio = price / max(cart_total, 1.0)
                     
                     n_score = scores[0, c_idx].item()
                     
                     row = [n_score, gfs, margin, velocity, acc_rate, price_ratio]
                     lgb_features.append(row)
-                    # Label: 1 if target, 0 if negative sample
-                    lgb_labels.append(1 if c_idx == 0 else 0)
+                    
+                    # Label: Graded relevance
+                    is_target = (c_idx == 0)
+                    if is_target and gfs > 0.5:
+                        lgb_labels.append(4)
+                    elif is_target and gfs <= 0.5:
+                        lgb_labels.append(3)
+                    elif not is_target and gfs > 0.5:
+                        lgb_labels.append(1)
+                    else:
+                        lgb_labels.append(0)
                     query_group_size += 1
                 
                 lgb_groups.append(query_group_size)
@@ -591,8 +632,8 @@ class CSAOEngine:
                 actual_len = len(hist_names)
                 h_lens = torch.tensor([actual_len], dtype=torch.long, device=self.device)
                 pad_len = 10 - actual_len
-                hist_names = hist_names + ["<PAD>"] * pad_len
-                hist_qtys = hist_qtys + [0.0] * pad_len
+                hist_names = ["<PAD>"] * pad_len + hist_names
+                hist_qtys = [0.0] * pad_len + hist_qtys
                 h_ids = torch.tensor([self.item_to_idx.get(n, 0) for n in hist_names], dtype=torch.long, device=self.device).unsqueeze(0)
                 h_qty = torch.tensor(hist_qtys, dtype=torch.float32, device=self.device).unsqueeze(0)
                 h_slm = self._get_slm_batch(hist_names).unsqueeze(0)
@@ -670,6 +711,132 @@ class CSAOEngine:
             
         optimizer.step(eval)
         print(f"[Engine] Temperature calibration finished. T_opt = {self.temperature.item():.4f}")
+
+    # =========================================================================
+    # SERVING MODE: Load pre-computed artifacts from disk
+    # =========================================================================
+
+    def load_pretrained_artifacts(self, artifact_dir: str) -> None:
+        """
+        Serving-mode initializer — bypasses all data generation and training.
+
+        Loads the 7 artifacts produced by train_offline.py and wires up every
+        component that predict_addon() needs:
+          - item_to_idx / idx_to_item / item_prices
+          - item_meta (for ColdStartRouter)
+          - corpus_df (for feature store re-hydration)
+          - SimulatedRedisStore (NightlyOfflineJob + NearRealTimeJob)
+          - SLM embedding cache (raw bytes, replayed into feature_store)
+          - CSAOHybridModel weights + temperature scalar
+          - LightGBMReranker booster
+
+        Args:
+            artifact_dir: Path to the directory containing artifacts.
+                          Typically 'artifacts/' relative to project root.
+        """
+        artifact_dir = os.path.abspath(artifact_dir)
+        print(f"\n[Engine] Loading pre-trained artifacts from: {artifact_dir}")
+
+        # ── 1. Item mappings & prices ─────────────────────────────────────────
+        mappings_path = os.path.join(artifact_dir, "item_mappings.pkl")
+        with open(mappings_path, "rb") as f:
+            mappings = pickle.load(f)
+        self.item_to_idx = mappings["item_to_idx"]
+        self.idx_to_item = mappings["idx_to_item"]
+        self.item_prices = mappings["item_prices"]
+        print(f"  ✓ item_mappings loaded  ({len(self.item_to_idx)} items)")
+
+        # ── 2. Item meta (for ColdStartRouter knowledge graph) ────────────────
+        item_meta_path = os.path.join(artifact_dir, "item_meta.pkl")
+        with open(item_meta_path, "rb") as f:
+            self.item_meta = pickle.load(f)
+        print(f"  ✓ item_meta loaded      ({len(self.item_meta)} entries)")
+
+        # ── 3. Corpus DataFrame (for feature store re-hydration) ──────────────
+        corpus_path = os.path.join(artifact_dir, "corpus_df.parquet")
+        self.corpus_df = pd.read_parquet(corpus_path)
+        print(f"  ✓ corpus_df loaded      ({len(self.corpus_df)} rows)")
+
+        # ── 4. Feature store re-hydration (NightlyOfflineJob + NearRealTimeJob) ─
+        # These are fast in-memory operations (~1-3s total) and are REQUIRED because
+        # OnlinePerRequestCalculator reads user RFM triplets and zone-velocities
+        # from the SimulatedRedisStore at inference time.
+        print("  [Engine] Re-hydrating SimulatedRedisStore (NightlyJob + NRT)...")
+        self.feature_store = SimulatedRedisStore()
+
+        nightly_job = NightlyOfflineJob(store=self.feature_store, corpus_df=self.corpus_df)
+        nightly_job.run()
+
+        nrt_job = NearRealTimeJob(store=self.feature_store, corpus_df=self.corpus_df)
+        nrt_job.run()
+
+        self.online_calculator = OnlinePerRequestCalculator(
+            store=self.feature_store, corpus_df=self.corpus_df
+        )
+        self.item_gen = CandidateItemFeatureGenerator(corpus_df=self.corpus_df)
+        print("  ✓ feature store hydrated")
+
+        # ── 5. ColdStartRouter re-build ───────────────────────────────────────
+        print("  [Engine] Re-building ColdStartRouter from saved corpus...")
+        known_items = sorted(list(self.item_to_idx.keys()))
+        item_cs = ItemColdStart(
+            item_feature_gen=self.item_gen,
+            known_item_names=known_items,
+            config=COLDSTART_CONFIG,
+        )
+        restaurant_cs = RestaurantColdStart(config=COLDSTART_CONFIG)
+        user_cs = UserColdStart(corpus_df=self.corpus_df, config=COLDSTART_CONFIG)
+        self.cold_start_router = ColdStartRouter(
+            item_cs=item_cs,
+            restaurant_cs=restaurant_cs,
+            user_cs=user_cs,
+            config=COLDSTART_CONFIG,
+        )
+        print("  ✓ ColdStartRouter ready")
+
+        # ── 6. SLM cache — replay bytes into feature_store ───────────────────
+        slm_cache_path = os.path.join(artifact_dir, "slm_cache.pt")
+        slm_cache: dict = torch.load(slm_cache_path, map_location="cpu", weights_only=False)
+        for key, value in slm_cache.items():
+            # key is "slm:<item_name>"; set() prepends "default:" namespace
+            self.feature_store.set(key, value)
+        print(f"  ✓ SLM cache replayed    ({len(slm_cache)} embeddings)")
+
+        # ── 7. Neural model — instantiate architecture then load weights ──────
+        num_items = len(self.item_to_idx) + 1  # 1-indexed, 0 = padding
+        self.neural_model = CSAOHybridModel(
+            num_items=num_items,
+            embedding_dim=128,
+            slm_dim=384,
+            context_dim=11,
+            gap_dim=5,
+            num_heads=4,
+            num_inducing=8,
+            num_isab_layers=2,
+            gru_layers=1,
+            ff_dim=256,
+            dropout=0.1,
+        ).to(self.device)
+
+        neural_model_path = os.path.join(artifact_dir, "neural_model.pt")
+        state_dict = torch.load(neural_model_path, map_location=self.device, weights_only=True)
+        self.neural_model.load_state_dict(state_dict)
+        self.neural_model.eval()
+        print("  ✓ neural_model loaded and set to eval()")
+
+        # ── 8. Temperature scalar ─────────────────────────────────────────────
+        temperature_path = os.path.join(artifact_dir, "temperature.pt")
+        temp_tensor = torch.load(temperature_path, map_location=self.device, weights_only=True)
+        self.temperature = nn.Parameter(temp_tensor.to(self.device))
+        print(f"  ✓ temperature loaded    (T = {self.temperature.item():.4f})")
+
+        # ── 9. LightGBM Reranker ──────────────────────────────────────────────
+        lgbm_path = os.path.join(artifact_dir, "lgbm_model.txt")
+        self.reranker = LightGBMReranker(k=10)
+        self.reranker.model = lgb.Booster(model_file=lgbm_path)
+        print("  ✓ LightGBM reranker loaded")
+
+        print("[Engine] ✅ All artifacts loaded. Engine is inference-ready.\n")
 
     def predict_addon(
         self,
@@ -821,7 +988,7 @@ class CSAOEngine:
             
             # Apply Temperature scaling (Fix 3) to true probabilities
             raw_logits = scores / self.temperature
-            probs = torch.nn.functional.softmax(raw_logits, dim=-1)[0].cpu().numpy()
+            probs = torch.sigmoid(raw_logits)[0].cpu().numpy()
         
         # --- Form Rerank Candidates ---
         # [Fix 4A]: Wallet Cap Filter
@@ -833,12 +1000,15 @@ class CSAOEngine:
                 cand, "Unknown", gap, hour_of_day, city
             )
             
-            # Fetch specific item price from corpus or default mock
-            # In a real system, price comes from the catalog. Here we mock it.
-            price = 150.0 
+            # Fetch specific item price from global taxonomy dictionary
+            price = self._mock_item_feature(cand, "price")
             
-            if cart_total + price > user_aov + margin_allowance:
-                continue # Discard item if it exceeds wallet cap
+            # Dynamic Wallet Cap: Ensure we don't completely lock out users making large orders.
+            effective_wallet = max(user_aov, cart_total)
+            margin_allowance = max(150.0, effective_wallet * 0.3)
+            
+            if cart_total + price > effective_wallet + margin_allowance:
+                continue # Discard VERY expensive items out of allowed bounds
                 
             neural_prob = probs[i].item()
             gfs = float(gfs_features.get("gap_fill_score", [0.0])[0])
@@ -848,9 +1018,9 @@ class CSAOEngine:
                 item_name=cand,
                 neural_score=neural_prob, # Use calibrated probability
                 gap_fill_score=gfs,
-                item_margin=0.3,
+                item_margin=self._mock_item_feature(cand, "margin"),
                 zone_velocity=velocity,
-                acceptance_rate=0.4,
+                acceptance_rate=self._mock_item_feature(cand, "acc_rate"),
                 price_ratio=price / max(cart_total, 1.0)
             )
             valid_candidates.append(rc)
@@ -889,8 +1059,9 @@ class CSAOEngine:
         
         # Prepare data for MMR math
         cand_names = [item for item, _ in ranked_base]
-        cand_probs = {c.item_name: c.neural_score for c in valid_candidates}
+        cand_probs = {item: score for item, score in ranked_base}
         cand_gfs = {c.item_name: c.gap_fill_score for c in valid_candidates}
+        cand_lgbm_scores = {item: score for item, score in ranked_base}
         
         # Pre-fetch all 384-d SLM vectors for candidate similarity computations
         cand_slm_pool = self._get_slm_batch(cand_names) # (Num_Cands, 384)
@@ -908,7 +1079,10 @@ class CSAOEngine:
                 # Part 1: Relevance Trade-off
                 p_i = cand_probs[item]
                 gfs_i = cand_gfs[item]
-                relevance = lambda_param * p_i * (1.0 + alpha_param * gfs_i)
+                lgbm_score_i = cand_lgbm_scores[item]
+                
+                # Correctly merge the calibrated LightGBM score as the primary relevance driver
+                relevance = lambda_param * lgbm_score_i * (1.0 + alpha_param * gfs_i)
                 
                 # Part 2: Diversity Penalty
                 max_sim = 0.0

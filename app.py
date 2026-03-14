@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,12 +11,31 @@ st.set_page_config(page_title="Zomato CSAO Super Add-On", layout="wide", page_ic
 # ==========================================
 # 1. Model Initialization
 # ==========================================
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+ARTIFACT_DIR = os.path.join(_PROJECT_ROOT, "artifacts")
+
+
 @st.cache_resource(show_spinner=False)
 def load_engine():
-    # Cache buster to correctly load the updated CSAOEngine with user_db
+    """
+    Serving-mode boot: loads pre-computed artifacts from disk.
+    Run `python train_offline.py` once to generate the artifacts/ directory.
+    """
+    if not os.path.isdir(ARTIFACT_DIR):
+        st.error(
+            "❌ **Artifacts not found.** "
+            "The model has not been trained yet. "
+            "Please run the following command in your terminal first:\n\n"
+            "```bash\n"
+            "python train_offline.py\n"
+            "```\n\n"
+            "This will train the models and save all required artifacts to `artifacts/`. "
+            "Once complete, restart the app."
+        )
+        st.stop()
+
     engine = CSAOEngine()
-    engine.run_offline_pipeline(n_trajectories=100)
-    engine.train_system(epochs=1, limit_batches=50)
+    engine.load_pretrained_artifacts(ARTIFACT_DIR)
     return engine
 
 with st.spinner("Booting up backend Hybrid Engine..."):
