@@ -57,14 +57,20 @@ if "needs_addon_refresh" not in st.session_state:
 if "user_db" not in st.session_state:
     # Deepcopy the cached global user_db into this specific browser session
     st.session_state.user_db = copy.deepcopy(engine.user_db)
+# Fix 5: Pre-fetched candidate cache — populated whenever the inferred cuisine is known.
+if "prefetched_candidates" not in st.session_state:
+    st.session_state.prefetched_candidates = None
 
-def add_to_cart(item_name: str, category: str, price: float):
+def add_to_cart(item_name: str, category: str, price: float, cuisine: str = "Unknown"):
     for item in st.session_state.cart:
         if item["name"] == item_name:
             item["quantity"] += 1
             st.session_state.debug_payload = None
             st.session_state.ranked_candidates = []
             st.session_state.needs_addon_refresh = True
+            # Fix 5: Re-prefetch with updated cart so the inference path skips CUISINE_MENUS scan
+            cart_name_set = {c["name"] for c in st.session_state.cart}
+            st.session_state.prefetched_candidates = engine.prefetch_candidates(cuisine, cart_name_set)
             return
     st.session_state.cart.append({
         "name": item_name,
@@ -75,12 +81,16 @@ def add_to_cart(item_name: str, category: str, price: float):
     st.session_state.debug_payload = None
     st.session_state.ranked_candidates = []
     st.session_state.needs_addon_refresh = True
+    # Fix 5: Pre-fetch candidates for the detected cuisine so predict_addon can skip scanning
+    cart_name_set = {c["name"] for c in st.session_state.cart}
+    st.session_state.prefetched_candidates = engine.prefetch_candidates(cuisine, cart_name_set)
 
 def clear_cart():
     st.session_state.cart = []
     st.session_state.debug_payload = None
     st.session_state.ranked_candidates = []
     st.session_state.needs_addon_refresh = False
+    st.session_state.prefetched_candidates = None  # Clear prefetch on cart reset
 
 # ==========================================
 # 3. Sidebar User Switcher & Dashboard
@@ -93,18 +103,49 @@ with st.sidebar:
         3: "Power User (15 Orders)"
     }
     sel_user_id = st.selectbox("Select Active User", options=list(user_options.keys()), format_func=lambda x: user_options[x], index=0)
-    
-    # Fetch from isolated session state user_db
-    profile = st.session_state.user_db.get(sel_user_id, {"order_count": 0, "mean_aov": 0.0, "cuisine_counts": {}})
-    top_cuisine = "None"
-    if profile["cuisine_counts"]:
-        top_cuisine = max(profile["cuisine_counts"], key=profile["cuisine_counts"].get)
-        
+
     st.divider()
-    st.subheader(" User Profile")
-    st.metric("Total Orders", profile["order_count"])
-    st.metric("Average Order Value (AOV)", f"₹{profile['mean_aov']:.2f}")
-    st.metric("Top Cuisine", top_cuisine)
+    st.subheader(" User CRM Profile")
+
+    # Always sync engine's view with the latest session-state user_db
+    engine.user_db = st.session_state.user_db
+    analytics = engine.get_user_analytics(sel_user_id)
+
+    if analytics["status"] == "active":
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.metric("Orders", analytics["total_orders"])
+            st.metric("AOV", f"₹{analytics['aov']:.0f}")
+        with col_b:
+            st.metric("Lifetime ₹", f"₹{analytics['lifetime_value']:.0f}")
+            st.metric("Items Tried", analytics["distinct_items_tried"])
+
+        if analytics["top_cuisines"]:
+            st.caption(f"**Top Cuisine:** {analytics['top_cuisines'][0][0]}")
+
+        st.write("**Most Ordered:**")
+        for item_name, count in analytics["favorite_items"][:3]:
+            st.caption(f"- {item_name} (×{count})")
+
+        st.divider()
+        st.subheader(" Recommended For You")
+        st.caption("Based on your semantic taste profile")
+
+        homepage_recs = engine.get_homepage_recommendations(sel_user_id, k=3)
+        for rec_item, score in homepage_recs:
+            rec_price = engine.item_prices.get(rec_item, 150.0)
+            with st.container(border=True):
+                st.markdown(f"**{rec_item}**")
+                st.caption(f"Match: {score * 100:.1f}%  |  ₹{rec_price:.0f}")
+                st.button(
+                    f"Add for ₹{rec_price:.0f}",
+                    key=f"home_rec_{rec_item}_{sel_user_id}",
+                    on_click=add_to_cart,
+                    args=(rec_item, "Recommendation", rec_price),
+                    use_container_width=True,
+                )
+    else:
+        st.info("New user — place an order to generate analytics and personalized recommendations.")
 
 # ==========================================
 # 4. Global Context
@@ -151,10 +192,11 @@ with col1:
                                     st.markdown(f"**{name}**")
                                     st.markdown(f"₹{price:.2f}")
                                     st.button(
-                                        "Add to Cart", 
-                                        key=f"menu_{cuisine_name}_{name}_{category}_{i}_{j}", 
-                                        on_click=add_to_cart, 
-                                        args=(name, category, price),
+                                        "Add to Cart",
+                                        key=f"menu_{cuisine_name}_{name}_{category}_{i}_{j}",
+                                        on_click=add_to_cart,
+                                        # Fix 5: pass cuisine so prefetch knows which menu to scan
+                                        args=(name, category, price, cuisine_name),
                                         width='stretch'
                                     )
 
@@ -233,11 +275,13 @@ with col2:
                         cart_items=st.session_state.cart,
                         restaurant_id="rest_ui_global",
                         restaurant_name=inferred_rest_name,
-                        restaurant_cuisine=inferred_cuisine,  # Restore cuisine context
+                        restaurant_cuisine=inferred_cuisine,
                         city=sel_city,
                         hour_of_day=sel_hour,
                         day_of_week=sel_day,
-                        is_weekend=sel_is_weekend
+                        is_weekend=sel_is_weekend,
+                        # Fix 5: pass cached candidates to skip CUISINE_MENUS scan at inference time
+                        prefetched_candidates=st.session_state.prefetched_candidates,
                     )
                     st.session_state.ranked_candidates = ranked
                     st.session_state.debug_payload = debug

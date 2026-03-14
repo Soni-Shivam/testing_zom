@@ -103,8 +103,11 @@ class CSAOEngine:
         self.slm_embedder: Optional[SLMEmbedder] = None
         # We will use self.feature_store for SLM (Fix 5)
         
-        # Temperature Calibration (Fix 3)
+        # Temperature Calibration
         self.temperature: nn.Parameter = nn.Parameter(torch.ones(1, device=self.device) * 1.5)
+
+        # Fix 5: Prefetch cache keyed by cuisine name
+        self._prefetch_cache: Dict[str, List[str]] = {}
 
 
     def place_order(self, user_id: int, cart_items: List[Dict[str, any]], cart_total: float, cuisine: str = "Unknown") -> None:
@@ -122,6 +125,82 @@ class CSAOEngine:
             
         profile["cuisine_counts"][cuisine] = profile["cuisine_counts"].get(cuisine, 0) + 1
         print(f"[Engine] Order placed for User {user_id}. Total Orders: {profile['order_count']}, AOV: ₹{profile['mean_aov']:.2f}")
+
+    def get_user_analytics(self, user_id: int) -> dict:
+        """
+        Extracts high-level behavioral metrics and aggregates purchasing
+        patterns for user profiling and CRM display.
+        """
+        if user_id not in self.user_db:
+            return {"status": "not_found"}
+
+        profile = self.user_db[user_id]
+        if profile["order_count"] == 0:
+            return {"status": "cold_start", "message": "No order history available."}
+
+        # Aggregate item frequencies across all past orders
+        item_counts: Dict[str, int] = {}
+        for item in profile["past_ordered_items"]:
+            name = item["name"]
+            item_counts[name] = item_counts.get(name, 0) + item.get("quantity", 1)
+
+        top_items = sorted(item_counts.items(), key=lambda x: x[1], reverse=True)
+        top_cuisines = sorted(profile["cuisine_counts"].items(), key=lambda x: x[1], reverse=True)
+
+        return {
+            "status": "active",
+            "total_orders": profile["order_count"],
+            "lifetime_value": profile["total_spend"],
+            "aov": profile["mean_aov"],
+            "top_cuisines": top_cuisines[:3],
+            "favorite_items": top_items[:5],
+            "distinct_items_tried": len(item_counts),
+        }
+
+    def get_homepage_recommendations(self, user_id: int, k: int = 5) -> List[tuple]:
+        """
+        Generates global catalog recommendations by pooling the user's
+        historical SLM embeddings (latent user-profile vector) and scoring
+        un-purchased inventory via cosine similarity.
+
+        This is pure Content-Based Filtering — no extra training needed.
+        """
+        analytics = self.get_user_analytics(user_id)
+        if analytics["status"] != "active":
+            # Cold-start fallback: global taxonomy bestsellers
+            return [("Butter Chicken", 0.99), ("Masala Dosa", 0.95), ("Margherita Pizza", 0.90)]
+
+        # 1. Identify the user's historical favorites
+        favorite_item_names = [item[0] for item in analytics["favorite_items"]]
+
+        # 2. Build the Latent User Profile Vector via mean-pooled SLM embeddings
+        fav_tensors = self._get_slm_batch(favorite_item_names)   # (Num_Favs, 384)
+        user_profile_vector = fav_tensors.mean(dim=0, keepdim=True)  # (1, 384)
+
+        # 3. Exploration: restrict candidates to items the user has NEVER ordered
+        past_item_set = {item["name"] for item in self.user_db[user_id]["past_ordered_items"]}
+        candidate_catalog = [
+            name for name in self.item_to_idx.keys()
+            if name not in past_item_set
+        ]
+
+        if not candidate_catalog:
+            return []  # User has tried every item in the catalog
+
+        # 4. Score via Cosine Similarity in the 384-d semantic space
+        catalog_tensors = self._get_slm_batch(candidate_catalog)  # (N, 384)
+        similarities = torch.nn.functional.cosine_similarity(user_profile_vector, catalog_tensors)
+
+        # 5. Rank and return top-K
+        sim_scores = similarities.cpu().numpy()
+        ranked_indices = np.argsort(sim_scores)[::-1][:k]
+
+        return [
+            (candidate_catalog[i], float(sim_scores[i]))
+            for i in ranked_indices
+        ]
+
+
 
     def run_offline_pipeline(self, n_trajectories: int = 1000) -> None:
         """
@@ -221,17 +300,7 @@ class CSAOEngine:
 
         print("[Engine] Offline initialization complete.")
         
-    def _mock_item_feature(self, item_name: str, feature_type: str) -> float:
-        """Helper to generate deterministic mock features based on item name."""
-        import hashlib
-        hash_val = int(hashlib.md5(f"{item_name}_{feature_type}".encode()).hexdigest(), 16)
-        if feature_type == "price":
-            return float(50.0 + (hash_val % 450)) # ₹50 to ₹500
-        elif feature_type == "margin":
-            return float(0.1 + (hash_val % 40) / 100.0) # 0.1 to 0.5
-        elif feature_type == "acc_rate":
-            return float(0.2 + (hash_val % 60) / 100.0) # 0.2 to 0.8
-        return 0.5
+    # Fix 3: _mock_item_feature() deleted — replaced by real feature store lookups.
 
     def _get_slm_batch(self, item_names: List[str]) -> torch.Tensor:
         """Helper to fetch 384-d SLM vectors from Redis (Fix 5)."""
@@ -569,16 +638,20 @@ class CSAOEngine:
                     gfs_features = self.item_gen.compute_candidate_features(
                         cand_name, "Unknown", gap, int(curr_row["hour_of_day"]), str(curr_row["city"])
                     )
-                    
+
                     gfs = float(gfs_features.get("gap_fill_score", [0.0])[0])
                     velocity = float(gfs_features.get("zone_velocity", [0.0])[0])
-                    acc_rate = self._mock_item_feature(cand_name, "acc_rate")
-                    margin = self._mock_item_feature(cand_name, "margin")
-                    price = self._mock_item_feature(cand_name, "price")
+
+                    # Fix 3: Real business signals (replaces _mock_item_feature)
+                    price = self.item_prices.get(cand_name, 150.0)
+                    raw_acc = self.feature_store.get(f"item:{cand_name}:acceptance_rate")
+                    acc_rate = float(raw_acc) if raw_acc is not None else 0.5
+                    raw_margin = self.feature_store.get(f"item:{cand_name}:margin")
+                    margin = float(raw_margin) if raw_margin is not None else 0.2
                     price_ratio = price / max(cart_total, 1.0)
-                    
+
                     n_score = scores[0, c_idx].item()
-                    
+
                     row = [n_score, gfs, margin, velocity, acc_rate, price_ratio]
                     lgb_features.append(row)
                     
@@ -846,6 +919,55 @@ class CSAOEngine:
 
         print("[Engine]  All artifacts loaded. Engine is inference-ready.\n")
 
+    # =========================================================================
+    # Fix 5: Candidate Pre-Fetching
+    # =========================================================================
+
+    def prefetch_candidates(self, restaurant_cuisine: str, cart_names: set) -> List[str]:
+        """
+        Fix 5: Asynchronously pre-fetch the top-100 candidate item names for a given
+        cuisine, minus anything already in the cart.  The result is stored in
+        self._prefetch_cache[restaurant_cuisine] and returned directly.
+
+        Call this when the cuisine / city context is locked in (e.g. on cart init)
+        so that predict_addon() can skip the expensive dynamic CUISINE_MENUS loop.
+
+        Args:
+            restaurant_cuisine: Cuisine key from CUISINE_MENUS.
+            cart_names:         Set of normalised item names currently in the cart.
+
+        Returns:
+            List of up to 100 candidate item name strings.
+        """
+        cart_names_norm = {c.lower().strip() for c in cart_names}
+
+        if restaurant_cuisine in CUISINE_MENUS:
+            menu = CUISINE_MENUS[restaurant_cuisine]
+            candidates = [
+                item["name"]
+                for cat_items in menu.values()
+                for item in cat_items
+                if item["name"].lower().strip() not in cart_names_norm
+            ]
+        else:
+            # Fallback: sample top items from the full catalog
+            all_known = list(self.item_to_idx.keys())
+            candidates = [
+                i for i in all_known if i.lower().strip() not in cart_names_norm
+            ]
+
+        # Cap at 100, inject Beverages & Desserts for cross-selling coverage
+        candidate_set = set(candidates[:100])
+        for item in self.item_meta:
+            if item.get("category") in ["Beverages", "Desserts"]:
+                if item["item_name"].lower().strip() not in cart_names_norm:
+                    candidate_set.add(item["item_name"])
+
+        result = list(candidate_set)[:100]
+        self._prefetch_cache[restaurant_cuisine] = result
+        print(f"[Engine] prefetch_candidates: cached {len(result)} items for '{restaurant_cuisine}'")
+        return result
+
     def predict_addon(
         self,
         user_id: int,
@@ -857,6 +979,9 @@ class CSAOEngine:
         hour_of_day: int,
         day_of_week: int,
         is_weekend: bool,
+        # Fix 5: optional pre-fetched candidate list; if supplied, skips the
+        # dynamic CUISINE_MENUS scan to meet the 65 ms SLA.
+        prefetched_candidates: Optional[List[str]] = None,
     ) -> Tuple[List[Tuple[str, float]], Dict[str, any]]:
         """
         3. Online Inference Endpoint
@@ -867,9 +992,16 @@ class CSAOEngine:
         cart_names = [c["name"] for c in cart_items]
         # Robust normalization for filtering
         cart_names_norm = {c.lower().strip() for c in cart_names}
-        
-        # Determine candidate items from restaurant menu
-        if restaurant_cuisine in CUISINE_MENUS:
+
+        # Fix 5: Skip expensive CUISINE_MENUS scan if a pre-fetched list was provided.
+        if prefetched_candidates is not None:
+            menu_items = [
+                c for c in prefetched_candidates
+                if c.lower().strip() not in cart_names_norm
+            ]
+            print(f"[Inference] predict_addon: Using {len(menu_items)} pre-fetched candidates.")
+        elif restaurant_cuisine in CUISINE_MENUS:
+            # Dynamic candidate generation (original path)
             menu = CUISINE_MENUS[restaurant_cuisine]
             menu_items = []
             for cat_items in menu.values():
@@ -887,13 +1019,31 @@ class CSAOEngine:
         profile = self.user_db[user_id]
 
         # Step A: Cold-Start Routing
-        # Use profile["order_count"] instead of 0 to enable Statefulness
+        # Fix 4: Hydrate user_orders so UserColdStart can compute Bayesian archetype posteriors.
+        # UserObservation requires: mean_aov, cuisine, cart_size, max_quantity
+        past_items = profile.get("past_ordered_items", [])
+        if past_items:
+            dominant_cuisine = (
+                max(profile.get("cuisine_counts", {}), key=profile["cuisine_counts"].get)
+                if profile.get("cuisine_counts") else restaurant_cuisine
+            )
+            user_orders = [
+                UserObservation(
+                    mean_aov=float(profile["mean_aov"]),
+                    cuisine=dominant_cuisine,
+                    cart_size=len(past_items),
+                    max_quantity=int(max((o.get("quantity", 1) for o in past_items), default=1)),
+                )
+            ]
+        else:
+            user_orders = []  # Genuinely new user — no observations available
+
         request = ColdStartRequest(
             user_id=user_id,
-            user_order_count=profile["order_count"], 
-            user_orders=[], # In a full system, translate past_ordered_items to UserObservation
+            user_order_count=profile["order_count"],
+            user_orders=user_orders,  # Fix 4: hydrated with real history
             restaurant_name=restaurant_name,
-            restaurant_interaction_count=0, # Assume 0 to trigger rest cold start
+            restaurant_interaction_count=0,
             restaurant_menu=menu_items,
             candidate_item_name=menu_items[0] if menu_items else "Dummy",
             candidate_item_has_interactions=True,
@@ -1009,11 +1159,44 @@ class CSAOEngine:
                 hist_ids, hist_qty, hist_slm, hist_lengths,
                 context_t, gap_t, cand_t, cand_slm
             )  # (1, K)
-            
-            # Apply Temperature scaling (Fix 3) to true probabilities
+
+            # Apply Temperature scaling to logits
             raw_logits = scores / self.temperature
-            probs = torch.sigmoid(raw_logits)[0].cpu().numpy()
+            # Fix 1: Softmax over candidate dimension (dim=1) so probabilities sum to 1,
+            # which is required for Temperature Scaling calibration to be meaningful.
+            probs = torch.softmax(raw_logits, dim=1)[0].cpu().numpy()
         
+        # Fix 2: Entropy-based popularity fallback.
+        # If the model has very low confidence (high entropy), bypass LightGBM and
+        # return city-level popularity rankings instead.
+        H_max = 2.5  # Maximum acceptable entropy (~uniform over ~12 items)
+        entropy = -np.sum(probs * np.log(probs + 1e-9))
+        print(f"[Inference] Softmax entropy: {entropy:.4f} (H_max={H_max})")
+
+        if entropy > H_max:
+            print("[Inference] High entropy detected — triggering popularity fallback.")
+            popularity_recs = cs_result.city_popularity_recs or []
+            fallback_items = [
+                (item, score) for item, score in popularity_recs
+                if item.lower().strip() not in cart_names_norm
+            ][:8]
+            elapsed_ms_fb = (time.perf_counter_ns() - t0) / 1e6
+            debug_payload_fb = {
+                "latency": elapsed_ms_fb,
+                "entropy_fallback": True,   # Fix 2 indicator
+                "entropy_value": float(entropy),
+                "cold_start_path": "Entropy Fallback → City Popularity",
+                "gru4rec_status": gru_status,
+                "feature_state": {
+                    "meal_gap_vector": gap.tolist() if isinstance(gap, np.ndarray) else list(gap),
+                    "cart_total": cart_total,
+                    "user_aov": user_aov,
+                    "price_anchor_ratio": (cart_total / max(user_aov, 1.0))
+                },
+                "scoring_breakdown": []
+            }
+            return fallback_items, debug_payload_fb
+
         # --- Form Rerank Candidates ---
         # [Fix 4A]: Wallet Cap Filter
         margin_allowance = 50.0 # Define a reasonable buffer limit
@@ -1023,28 +1206,35 @@ class CSAOEngine:
             gfs_features = self.item_gen.compute_candidate_features(
                 cand, "Unknown", gap, hour_of_day, city
             )
-            
-            # Fetch specific item price from global taxonomy dictionary
-            price = self._mock_item_feature(cand, "price")
-            
+
+            # Fix 3: Fetch real price from global taxonomy catalog (was _mock_item_feature)
+            price = self.item_prices.get(cand, 150.0)
+
+            # Fix 3: Fetch acceptance_rate and margin from feature store; default if absent
+            raw_acc = self.feature_store.get(f"item:{cand}:acceptance_rate")
+            acceptance_rate = float(raw_acc) if raw_acc is not None else 0.5
+
+            raw_margin = self.feature_store.get(f"item:{cand}:margin")
+            item_margin = float(raw_margin) if raw_margin is not None else 0.2
+
             # Dynamic Wallet Cap: Ensure we don't completely lock out users making large orders.
             effective_wallet = max(user_aov, cart_total)
             margin_allowance = max(150.0, effective_wallet * 0.3)
-            
+
             if cart_total + price > effective_wallet + margin_allowance:
-                continue # Discard VERY expensive items out of allowed bounds
-                
+                continue  # Discard VERY expensive items outside allowed bounds
+
             neural_prob = probs[i].item()
             gfs = float(gfs_features.get("gap_fill_score", [0.0])[0])
             velocity = float(gfs_features.get("zone_velocity", [0.0])[0])
-            
+
             rc = RerankCandidate(
                 item_name=cand,
-                neural_score=neural_prob, # Use calibrated probability
+                neural_score=neural_prob,
                 gap_fill_score=gfs,
-                item_margin=self._mock_item_feature(cand, "margin"),
+                item_margin=item_margin,        # Fix 3: real margin from feature store
                 zone_velocity=velocity,
-                acceptance_rate=self._mock_item_feature(cand, "acc_rate"),
+                acceptance_rate=acceptance_rate, # Fix 3: real acc_rate from feature store
                 price_ratio=price / max(cart_total, 1.0)
             )
             valid_candidates.append(rc)

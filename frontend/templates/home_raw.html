@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary-container": "#00837c",
+              "on-secondary-fixed": "#410007",
+              "tertiary-fixed-dim": "#71d7cf",
+              "surface": "#fcf9f8",
+              "primary-container": "#db313f",
+              "primary-fixed-dim": "#ffb3b1",
+              "on-tertiary-container": "#f3fffd",
+              "on-primary": "#ffffff",
+              "surface-tint": "#bb162c",
+              "outline-variant": "#e4bebc",
+              "tertiary": "#006762",
+              "surface-variant": "#e5e2e1",
+              "on-tertiary-fixed-variant": "#00504c",
+              "surface-container-low": "#f6f3f2",
+              "surface-bright": "#fcf9f8",
+              "background": "#fcf9f8",
+              "on-tertiary": "#ffffff",
+              "error": "#ba1a1a",
+              "surface-container-high": "#eae7e7",
+              "surface-dim": "#dcd9d9",
+              "surface-container-highest": "#e5e2e1",
+              "on-surface": "#1b1b1b",
+              "on-secondary-container": "#741d22",
+              "on-background": "#1b1b1b",
+              "secondary": "#a03e40",
+              "secondary-container": "#fd8585",
+              "inverse-on-surface": "#f3f0ef",
+              "surface-container-lowest": "#ffffff",
+              "on-primary-container": "#fffbff",
+              "primary": "#b7122a",
+              "on-primary-fixed-variant": "#92001c",
+              "surface-container": "#f0eded",
+              "on-error-container": "#93000a",
+              "on-primary-fixed": "#410007",
+              "inverse-surface": "#313030",
+              "secondary-fixed-dim": "#ffb3b1",
+              "on-secondary": "#ffffff",
+              "on-surface-variant": "#5b403f",
+              "outline": "#8f6f6e",
+              "tertiary-fixed": "#8ef4eb",
+              "secondary-fixed": "#ffdad8",
+              "on-secondary-fixed-variant": "#81272a",
+              "inverse-primary": "#ffb3b1",
+              "error-container": "#ffdad6",
+              "primary-fixed": "#ffdad8",
+              "on-error": "#ffffff",
+              "on-tertiary-fixed": "#00201e"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-nav {
+            background: rgba(252, 249, 248, 0.8);
+            backdrop-filter: blur(12px);
+        }
+        .custom-shadow {
+            box-shadow: 0 4px 16px rgba(65, 0, 7, 0.06);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface antialiased pb-24">
+<!-- Top Bar: Sticky Anchor -->
+<header class="sticky top-0 z-50 glass-nav px-4 py-3 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="location_on">location_on</span>
+<div class="flex flex-col">
+<span class="font-label text-label-sm uppercase tracking-wider text-on-surface-variant">DELIVER TO</span>
+<span class="font-headline text-on-surface font-semibold text-sm">Home, New York City</span>
+</div>
+</div>
+<div class="h-10 w-10 rounded-full border-2 border-primary-container overflow-hidden">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="Close up portrait of a smiling young man" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDjEvxh9kmQzki1h5kWp47yhM5mWH6_njt0seh6OUkMnN36wkPJWrMzmJUg10LkcOdt_VIBi8w5k1GyesTKfoMlzkAUYRM4N3ws4PSNJBKJJyx-FoSS8j5NxAKy6s296EFz0jb_SoiIQlulkWtxWqqseD-0ENCmwf2TZSOdFvhpSY2H0FMU-5muG_iCn9TbFQYBDHTHVNE-Qt-g-dhj1c8aHBmfyJbI-Axzqh7KpCO6wk29PgzFQMkHUQpjLJzbPDL0a5c3p2kJs1w"/>
+</div>
+</header>
+<!-- Search Section -->
+<section class="px-4 mt-2">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-4 text-outline" data-icon="search">search</span>
+<input class="w-full bg-surface-container-highest border-none rounded-full py-3.5 pl-12 pr-4 focus:ring-2 focus:ring-primary/20 text-sm placeholder:text-on-surface-variant" placeholder="Search for restaurant, cuisine or a dish" type="text"/>
+<span class="material-symbols-outlined absolute right-4 text-primary" data-icon="mic">mic</span>
+</div>
+</section>
+<!-- Quick Categories: Editorial Layout -->
+<section class="mt-6">
+<div class="flex overflow-x-auto hide-scrollbar gap-4 px-4 pb-2">
+<div class="flex flex-col items-center gap-1 shrink-0">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest custom-shadow flex items-center justify-center p-3">
+<img class="w-full h-full object-contain" data-alt="Small delicious pizza on white background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA5TepSVPOGJqpvLfNxCDevbAtWhFygu4gcSLft5o-0ZYRXsJy_5nenjPoEefw6VXQDGCRFJc-ay0mkWVHS4kUfx-_YB0v9ZVm6dkxWoTXSaFeO98tnxoHetBqfPygAQWJbARfZoq4naYEV39pJ_2s_01DFNnq7V0y097AOlxrCWy-R8s5Eipl4wM04_SiIwMj26eTLBK3jIou7pY09x5WnUJUgJgS_6tUak5t3035nbHp-Pdf5Fyh4r91XkoCnwHuva96ykQ2gSCQ"/>
+</div>
+<span class="text-xs font-medium">Pizza</span>
+</div>
+<div class="flex flex-col items-center gap-1 shrink-0">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest custom-shadow flex items-center justify-center p-3">
+<img class="w-full h-full object-contain" data-alt="Traditional indian biryani in a bowl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAky8idfFLAfRK9scL5pJaoYCFUzRgdIdHYw8t_t67l4OAFy8rFxleQygJZym2NTd8X9Q17-f9aPkvqrMIPOLD6-BdSTxqX9rkZ2HessYUWF37lkthbiRIW_XyT-UhnGoVqyZ6WLbQsZptljRc35D5x7CKHs8r11xJ-jvsNfS01nzNU2bpR9yjEsyuztibZAyN3M0v20bAyg43T-NzmHOy-8uPplGHDmLkz34_-4ev38YrGcjhSe_OWwW2JLt-dyeVa6oY1ZZ-kkuE"/>
+</div>
+<span class="text-xs font-medium">Biryani</span>
+</div>
+<div class="flex flex-col items-center gap-1 shrink-0">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest custom-shadow flex items-center justify-center p-3">
+<img class="w-full h-full object-contain" data-alt="Juicy gourmet beef burger with cheese" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-8MzAem9LQm8OFLX8Y8kA7Zq9LEbIh7Bc6aNKfNzc6REhuMSVjjhz0ReoQ9k4v19xAEgr1oVjW0EJcFjoywwQ65mxQB150dbmYFzjXv_4mgjdKU3cBYBrAaNPzBljeOMNIuQ9uHBYW_mXb5MjLldZ_HtVIeCxy0sShgrVDtndCYJjnvBTNdmFD6r_pl1xCaUH1TeU_-iekHR5qvx-wf0JLAtNsL7el-9CVjJX49tsmxINffTa4T-pyk8qsjY2rTT-8TvyEJVW_-E"/>
+</div>
+<span class="text-xs font-medium">Burger</span>
+</div>
+<div class="flex flex-col items-center gap-1 shrink-0">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest custom-shadow flex items-center justify-center p-3">
+<img class="w-full h-full object-contain" data-alt="Fresh vegetable salad bowl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBM98YZnRdJcbssRBs62X68WEYHeSmfYQmPU88Qs7MzIzIjxb9VVelM_0F2AoiQ1UcUNS7V55pLGh9Pz3RsrDcng1iMjYAQDaYTkx4_nZDofppfH4st1MjQWl6RG-YLyBxQfenBvFyjUeZAL3LId56_f21xACEExFDwxZ0o7UnY1r4TQnWzaj20y3ePUeM3wJ5ytHN2EdTXb0h0GblZrjvqLUWrV9aemFy_lC6ynwQGvz-UOsgEXyog2hg2UA_cSg61AVgHUCgIb8"/>
+</div>
+<span class="text-xs font-medium">Healthy</span>
+</div>
+<div class="flex flex-col items-center gap-1 shrink-0">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest custom-shadow flex items-center justify-center p-3">
+<img class="w-full h-full object-contain" data-alt="Crispy french fries in a container" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5mlrGDoTJV5nWeP8A_Wgr1MJ-4MP_R0JDxa892o4zGU_Z1wj8eic2YrhwSwxuOXiAi-QjdXmQlzO1cpDoZwQdbPAqSdmD7kylTm3MNFJWx6f_uoX_sacMX6hphHiDxsoOxbkneUgn3E99RvYMg1zvUEJxOkpHi1h-6hvole_5kxfEX7YN_V2F-Tq97lZdb17MdBbBZzTQo73bU1YOJH6c8nco-DKgztiXv1AzUpf9VGQB4d_H8r5iaD-2cjZ2nRJGr9CxGHYMdr4"/>
+</div>
+<span class="text-xs font-medium">Fast Food</span>
+</div>
+</div>
+</section>
+<!-- Promotional Hero Banner -->
+<section class="px-4 mt-8">
+<div class="relative h-44 rounded-xl overflow-hidden bg-gradient-to-br from-primary to-primary-container p-6 flex flex-col justify-center custom-shadow">
+<div class="relative z-10 max-w-[60%]">
+<h2 class="font-headline text-display-md text-on-primary leading-tight font-bold text-2xl">Meals Under $15</h2>
+<p class="text-on-primary/80 mt-1 text-sm">Curated budget-friendly feasts</p>
+<button class="mt-4 bg-on-primary text-primary px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider">Order Now</button>
+</div>
+<img class="absolute right-[-20px] top-[-10px] w-56 h-56 object-contain rotate-12 opacity-90" data-alt="Premium steak and potatoes on a dark plate" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA24UUMLCoPex4ecnbmxJQbPHSm-YchgebNa4laUNVoHqswW1V6IWIegdLQSrZi8LpV1Ux6Wgli3rnE2FO3a5dWuYAk-8WdoRUWfAfHoki_MgC2WubJ-YyfVPHyJna0DM0lWB7OB-8aMTYsp7pVw-AKRH-roHNWXd9doPfxLgYOnl5n-d5RLYaH0GgclSe-tE1KXMue4xIPrpt3-xKgBl7kzSOR6rSo9x-aufPZt6E-Fz_2Xush1gzIM__4tZcM7OP4hqM09HSGtSE"/>
+</div>
+</section>
+<!-- Recommendations Section -->
+<section class="mt-10 px-4">
+<div class="flex justify-between items-end mb-6">
+<div>
+<h3 class="font-headline text-headline-sm text-on-surface">Recommendations curated for you</h3>
+<div class="h-1 w-12 bg-primary mt-1 rounded-full"></div>
+</div>
+<span class="text-primary text-sm font-semibold">See all</span>
+</div>
+<!-- Bento Grid / Asymmetric Grid of Cards -->
+<div class="grid grid-cols-1 gap-8">
+<!-- Card 1 -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden custom-shadow">
+<div class="relative h-56">
+<img class="w-full h-full object-cover" data-alt="Flat lay of various healthy food bowls" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCvgQdE_Ux9C6dcFq894shZyckQHKw7TaDkrCNTmumJdf_CCxBCVB4oBhcKR_vQB_lVbSMgKYIMLl1XLJl0pTBc6lBRQ4wsyK73kUtgPFg0i5N8auysfvL9pO7zhH_QQvXx8wQGhsXNsLlI6xwihFn9gDuA8irm_k6Ryo49kLPYcmZNMsoNgWvxh7PLQFnO67NTBUilZoUGbmEr5G_C0GNT2NOt1XES4AkdMNCYE2C1cCe2C3fCnG3iP5Ro-r74cmp6_KmnnPEo0eE"/>
+<div class="absolute top-4 left-0 bg-primary text-on-primary px-3 py-1 rounded-r-lg font-bold text-xs">
+                        50% OFF UP TO $10
+                    </div>
+<div class="absolute bottom-4 right-4 glass-nav px-2 py-1 rounded-lg flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-on-surface" data-icon="schedule">schedule</span>
+<span class="font-label text-[10px] font-bold">30-35 mins</span>
+</div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-headline text-title-md text-on-surface">The Crimson Bistro</h4>
+<p class="text-on-surface-variant text-xs mt-1">Italian • Continental • Desserts</p>
+</div>
+<div class="bg-tertiary text-on-tertiary px-2 py-1 rounded flex items-center gap-1">
+<span class="text-xs font-bold">4.2</span>
+<span class="material-symbols-outlined text-[12px]" data-icon="star" data-weight="fill">star</span>
+</div>
+</div>
+<div class="mt-4 flex items-center gap-2">
+<div class="border border-tertiary p-0.5 flex items-center justify-center">
+<div class="w-1.5 h-1.5 rounded-full bg-tertiary"></div>
+</div>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Pure Veg Available</span>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden custom-shadow">
+<div class="relative h-56">
+<img class="w-full h-full object-cover" data-alt="Gourmet salad with avocado and egg" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCQjRpW10ftvO5G_IDOvRxsEkew2eh6c70Fu9kLbB2SBclGhE0XZvgghPdhKh9B30lmZULj_MPM7C35JutVIodMigqJXpBDBeSLpaQ09X3qFXTXtK-hJ91rrneaPWopxu-lTTElM3x_Xv5sVfZbuSqEHMj9xY-1e1yJkIUCxDZVA9HSWhThrSLvKyq2V1zRAtmPmAf5i_lTaxmtS7DAq-sKcvdD7z7KibHDiX_rGMYbFgyJSRLibxNfrGSywbkCBVhXBFDPgFIVXOw"/>
+<div class="absolute top-4 left-0 bg-primary text-on-primary px-3 py-1 rounded-r-lg font-bold text-xs">
+                        FREE DELIVERY
+                    </div>
+<div class="absolute bottom-4 right-4 glass-nav px-2 py-1 rounded-lg flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-on-surface" data-icon="schedule">schedule</span>
+<span class="font-label text-[10px] font-bold">20-25 mins</span>
+</div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-headline text-title-md text-on-surface">Urban Kitchen</h4>
+<p class="text-on-surface-variant text-xs mt-1">Salads • Healthy • Juices</p>
+</div>
+<div class="bg-tertiary text-on-tertiary px-2 py-1 rounded flex items-center gap-1">
+<span class="text-xs font-bold">4.5</span>
+<span class="material-symbols-outlined text-[12px]" data-icon="star" data-weight="fill">star</span>
+</div>
+</div>
+<div class="mt-4 flex items-center gap-2">
+<div class="border border-primary p-0.5 flex items-center justify-center">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+</div>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Premium Selection</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 right-0 glass-nav border-t border-outline-variant/15 flex justify-around items-center py-2 px-4 z-50">
+<a class="flex flex-col items-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined" data-icon="delivery_dining" data-weight="fill">delivery_dining</span>
+<span class="font-label text-[10px] font-bold">Delivery</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-on-surface-variant" href="#">
+<span class="material-symbols-outlined" data-icon="restaurant">restaurant</span>
+<span class="font-label text-[10px] font-bold">Dining</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-on-surface-variant" href="#">
+<span class="material-symbols-outlined" data-icon="live_tv">live_tv</span>
+<span class="font-label text-[10px] font-bold">Live</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-on-surface-variant" href="#">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+<span class="font-label text-[10px] font-bold">Money</span>
+</a>
+</nav>
+</body></html>

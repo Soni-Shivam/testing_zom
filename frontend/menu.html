@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary-container": "#db313f",
+              "inverse-primary": "#ffb3b1",
+              "surface-dim": "#dcd9d9",
+              "on-surface-variant": "#5b403f",
+              "primary-fixed": "#ffdad8",
+              "on-surface": "#1b1b1b",
+              "on-secondary-container": "#741d22",
+              "error": "#ba1a1a",
+              "error-container": "#ffdad6",
+              "tertiary-fixed-dim": "#71d7cf",
+              "tertiary-container": "#00837c",
+              "on-tertiary-container": "#f3fffd",
+              "on-primary-container": "#fffbff",
+              "surface-container-highest": "#e5e2e1",
+              "on-primary-fixed-variant": "#92001c",
+              "on-error": "#ffffff",
+              "inverse-surface": "#313030",
+              "on-secondary-fixed": "#410007",
+              "on-secondary": "#ffffff",
+              "on-primary-fixed": "#410007",
+              "tertiary-fixed": "#8ef4eb",
+              "tertiary": "#006762",
+              "on-tertiary": "#ffffff",
+              "surface-container-high": "#eae7e7",
+              "surface-container-lowest": "#ffffff",
+              "background": "#fcf9f8",
+              "outline-variant": "#e4bebc",
+              "surface-tint": "#bb162c",
+              "surface-container": "#f0eded",
+              "outline": "#8f6f6e",
+              "surface-bright": "#fcf9f8",
+              "on-tertiary-fixed": "#00201e",
+              "on-background": "#1b1b1b",
+              "surface": "#fcf9f8",
+              "primary-fixed-dim": "#ffb3b1",
+              "primary": "#b7122a",
+              "inverse-on-surface": "#f3f0ef",
+              "on-secondary-fixed-variant": "#81272a",
+              "surface-variant": "#e5e2e1",
+              "surface-container-low": "#f6f3f2",
+              "secondary-fixed": "#ffdad8",
+              "on-tertiary-fixed-variant": "#00504c",
+              "on-primary": "#ffffff",
+              "secondary-fixed-dim": "#ffb3b1",
+              "secondary": "#a03e40",
+              "secondary-container": "#fd8585",
+              "on-error-container": "#93000a"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .glass-panel {
+            background: rgba(252, 249, 248, 0.8);
+            backdrop-filter: blur(12px);
+        }
+        .veg-icon { border: 1px solid #006762; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; }
+        .veg-dot { width: 6px; height: 6px; background-color: #006762; border-radius: 50%; }
+        .nonveg-icon { border: 1px solid #b7122a; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; }
+        .nonveg-dot { width: 6px; height: 6px; background-color: #b7122a; border-radius: 50%; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-fixed">
+<div class="max-w-md mx-auto min-h-screen flex flex-col relative pb-32">
+<!-- TopAppBar -->
+<header class="sticky top-0 z-50 glass-panel">
+<div class="flex items-center justify-between px-4 py-4">
+<div class="flex items-center gap-4">
+<button class="flex items-center justify-center p-2 text-on-surface">
+<span class="material-symbols-outlined" data-icon="arrow_back">arrow_back</span>
+</button>
+<h1 class="font-headline text-headline-sm font-semibold tracking-tight">Spice Heaven</h1>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-on-surface">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+</button>
+<button class="p-2 text-on-surface">
+<span class="material-symbols-outlined" data-icon="share">share</span>
+</button>
+</div>
+</div>
+<!-- SearchBar (Shared Component Logic) -->
+<div class="px-4 pb-4">
+<div class="bg-surface-container-highest flex items-center px-4 py-3 rounded-full">
+<span class="material-symbols-outlined text-outline mr-2" data-icon="search">search</span>
+<span class="text-on-surface-variant body-md">Search in Spice Heaven</span>
+</div>
+</div>
+<!-- Categories -->
+<nav class="flex overflow-x-auto no-scrollbar px-4 pb-4 gap-3 border-b border-transparent">
+<button class="bg-primary text-on-primary px-4 py-1.5 rounded-xl text-label-sm whitespace-nowrap">Recommended</button>
+<button class="bg-surface-container-high text-on-surface px-4 py-1.5 rounded-xl text-label-sm whitespace-nowrap">Mains</button>
+<button class="bg-surface-container-high text-on-surface px-4 py-1.5 rounded-xl text-label-sm whitespace-nowrap">Breads</button>
+<button class="bg-surface-container-high text-on-surface px-4 py-1.5 rounded-xl text-label-sm whitespace-nowrap">Beverages</button>
+<button class="bg-surface-container-high text-on-surface px-4 py-1.5 rounded-xl text-label-sm whitespace-nowrap">Desserts</button>
+</nav>
+</header>
+<!-- Menu Content -->
+<main class="flex-1 px-4 pt-6 space-y-8">
+<section>
+<h2 class="font-headline text-title-md font-bold mb-6 flex items-center gap-2">
+                    Recommended
+                    <span class="h-1 w-12 bg-primary rounded-full"></span>
+</h2>
+<div class="space-y-4">
+<!-- Item Card 1 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl flex justify-between gap-4">
+<div class="flex-1">
+<div class="veg-icon mb-2"><div class="veg-dot"></div></div>
+<h3 class="font-headline text-on-surface font-semibold text-title-md">Butter Chicken Deluxe</h3>
+<p class="text-on-surface font-medium mt-1">₹450</p>
+<p class="text-on-surface-variant body-md mt-2 line-clamp-2">Rich creamy tomato gravy with charcoal-grilled chicken morsels.</p>
+</div>
+<div class="relative w-32 h-32 shrink-0">
+<img alt="Butter Chicken" class="w-full h-full object-cover rounded-xl" data-alt="Close up view of creamy butter chicken in a bowl" src="/static/images/AB6AXuC7LeM9EPod2hJCyISrKIkMjAWtq7sjzc5gv_yIEY1DCHWhxKhTdFDIJ7zJU35YwsnoEPpljC2x1F8Ar0yBHTCd9h_YJOeH-ovO881wPVkUmqVLjIf-v_DL8dbLH6Q6n2W3IEMTtsoKrDsNkzd5Kp33uJrNZ74VuVy0yy_IxHOYc5_qlqXKA6aqe7Wp-9WT6WVonQRq6dI8KFNAj_pne791e6PXJ_TKeoIqTnusTL7IhVjWf9sv_M3lZLLmQV_e-mN0yr1n28yP2YM.jpg"/>
+<button class="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-surface-container-lowest text-primary border border-outline-variant font-bold px-6 py-1.5 rounded-lg shadow-sm text-sm">ADD</button>
+</div>
+</div>
+<!-- Item Card 2 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl flex justify-between gap-4">
+<div class="flex-1">
+<div class="nonveg-icon mb-2"><div class="nonveg-dot"></div></div>
+<h3 class="font-headline text-on-surface font-semibold text-title-md">Mutton Rogan Josh</h3>
+<p class="text-on-surface font-medium mt-1">₹520</p>
+<p class="text-on-surface-variant body-md mt-2 line-clamp-2">Tender Kashmiri lamb cooked in a rich onion and yogurt gravy.</p>
+</div>
+<div class="relative w-32 h-32 shrink-0">
+<img alt="Mutton Curry" class="w-full h-full object-cover rounded-xl" data-alt="Traditional lamb curry with aromatic spices and herbs" src="/static/images/AB6AXuDsjU2tdehrOQaen0kmPHHETf3Pq7SopK4SRFDEb_5SRW2dsEu4uH-fc4nmuh7F2jWtl_MzcsM9sL_H2je4U9w5pLwcAcPz6s1AJR820eZY5hm3LATHf5sDGFVcmL052pGLrQys1hyfRaM0P8TL5KhrV3L1adFnzgBAktsCHd-TvSR_pSrCC_eoQZSjUhoJ0hABTZMK9Ji4UdJ3DUHuu-t3AzWi17jrPs7-ra6mJVpl1UC6WneutqsreU6Ngpgli_LqDzx6d3fjNHI.jpg"/>
+<button class="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-surface-container-lowest text-primary border border-outline-variant font-bold px-6 py-1.5 rounded-lg shadow-sm text-sm">ADD</button>
+</div>
+</div>
+<!-- Item Card 3 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl flex justify-between gap-4">
+<div class="flex-1">
+<div class="veg-icon mb-2"><div class="veg-dot"></div></div>
+<h3 class="font-headline text-on-surface font-semibold text-title-md">Paneer Tikka Masala</h3>
+<p class="text-on-surface font-medium mt-1">₹380</p>
+<p class="text-on-surface-variant body-md mt-2 line-clamp-2">Smoky paneer cubes in a spiced onion-tomato masala sauce.</p>
+</div>
+<div class="relative w-32 h-32 shrink-0">
+<img alt="Paneer Tikka" class="w-full h-full object-cover rounded-xl" data-alt="Golden paneer tikka masala with fresh cilantro garnish" src="/static/images/AB6AXuCVgnIsCn8A2bb_3zYy8AIizypWlJHs2ASofMg2m4OBUC1KRAOCxRLWQGLwtxg9Fdv2IKx9iHui62MOpvF0wf-psOVSi73COFw5m9cisRSMGM2Fa_D_5QEiuaNDAIoTI9_DytIgvvRGHEMHofl59yAsCiecu6_McEEnVXQ9LyIj2RpDScFrpxAlAm3Hj1DIpyNzzAowC8v1Z9YO2r32XCY3q5q2f0CuGlR1OJcQJuW0zvXaQF8f0wmetRWlVr4LjD9c-UTK0uKa_5g.jpg"/>
+<button class="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-surface-container-lowest text-primary border border-outline-variant font-bold px-6 py-1.5 rounded-lg shadow-sm text-sm">ADD</button>
+</div>
+</div>
+</div>
+</section>
+<section>
+<h2 class="font-headline text-title-md font-bold mb-6 flex items-center gap-2">
+                    Breads
+                    <span class="h-1 w-8 bg-outline-variant rounded-full"></span>
+</h2>
+<div class="bg-surface-container-lowest p-4 rounded-xl flex justify-between gap-4">
+<div class="flex-1">
+<div class="veg-icon mb-2"><div class="veg-dot"></div></div>
+<h3 class="font-headline text-on-surface font-semibold text-title-md">Garlic Butter Naan</h3>
+<p class="text-on-surface font-medium mt-1">₹60</p>
+<p class="text-on-surface-variant body-md mt-2 line-clamp-2">Soft leavened bread with roasted garlic and melted butter.</p>
+</div>
+<div class="relative w-32 h-32 shrink-0">
+<img alt="Garlic Naan" class="w-full h-full object-cover rounded-xl" data-alt="Warm garlic naan bread brushed with melted butter" src="/static/images/AB6AXuDcLfcnrzobGhiQd0hO9ikNNj7xI0z8L4W16VRO62OZGmie48rTU8eVUfKICXj8foSRBQiAaS5bAC0DzrUOA83CqFVkPprV-uJUvSvLa3R01t2jsa4Efz6rzyAxT2DrlJbgcCEfAM-KPlXOGrbTOhpAnUSpNW-yGfCj0fCQ4rg77vr_u2sfmF0J3asoPl0U53kq1CqgBZfeZpn_Ec09DkGralcGpS7TRIRKx10Wkouf4g5Dr9j1mEM_TSi4gcSrLz09NW3dfLGmTOQ.jpg"/>
+<button class="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-surface-container-lowest text-primary border border-outline-variant font-bold px-6 py-1.5 rounded-lg shadow-sm text-sm">ADD</button>
+</div>
+</div>
+</section>
+</main>
+<!-- ActionPanel (Shared Component Logic) -->
+<footer class="fixed bottom-0 left-0 right-0 p-4 z-50">
+<div class="max-w-md mx-auto">
+<div class="bg-primary-container p-4 rounded-xl flex items-center justify-between shadow-lg text-on-primary">
+<div class="flex flex-col">
+<p class="font-bold text-lg leading-tight">1 Item | ₹450</p>
+<button class="flex items-center text-sm font-medium opacity-90">
+                            View Cart
+                            <span class="material-symbols-outlined text-sm ml-1" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+<div class="bg-white/20 p-2 rounded-lg">
+<span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span>
+</div>
+</div>
+</div>
+</footer>
+<!-- BottomNavBar (Shared Component Logic - Filtered Out for Process Screen) -->
+<!-- Logic: This is a focused menu page, so BottomNavBar is excluded as per Exclusion Protocol -->
+</div>
+</body></html>
