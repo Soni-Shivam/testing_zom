@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary-container": "#00837c",
+              "on-secondary-fixed": "#410007",
+              "tertiary-fixed-dim": "#71d7cf",
+              "surface": "#fcf9f8",
+              "primary-container": "#db313f",
+              "primary-fixed-dim": "#ffb3b1",
+              "on-tertiary-container": "#f3fffd",
+              "on-primary": "#ffffff",
+              "surface-tint": "#bb162c",
+              "outline-variant": "#e4bebc",
+              "tertiary": "#006762",
+              "surface-variant": "#e5e2e1",
+              "on-tertiary-fixed-variant": "#00504c",
+              "surface-container-low": "#f6f3f2",
+              "surface-bright": "#fcf9f8",
+              "background": "#fcf9f8",
+              "on-tertiary": "#ffffff",
+              "error": "#ba1a1a",
+              "surface-container-high": "#eae7e7",
+              "surface-dim": "#dcd9d9",
+              "surface-container-highest": "#e5e2e1",
+              "on-surface": "#1b1b1b",
+              "on-secondary-container": "#741d22",
+              "on-background": "#1b1b1b",
+              "secondary": "#a03e40",
+              "secondary-container": "#fd8585",
+              "inverse-on-surface": "#f3f0ef",
+              "surface-container-lowest": "#ffffff",
+              "on-primary-container": "#fffbff",
+              "primary": "#b7122a",
+              "on-primary-fixed-variant": "#92001c",
+              "surface-container": "#f0eded",
+              "on-error-container": "#93000a",
+              "on-primary-fixed": "#410007",
+              "inverse-surface": "#313030",
+              "secondary-fixed-dim": "#ffb3b1",
+              "on-secondary": "#ffffff",
+              "on-surface-variant": "#5b403f",
+              "outline": "#8f6f6e",
+              "tertiary-fixed": "#8ef4eb",
+              "secondary-fixed": "#ffdad8",
+              "on-secondary-fixed-variant": "#81272a",
+              "inverse-primary": "#ffb3b1",
+              "error-container": "#ffdad6",
+              "primary-fixed": "#ffdad8",
+              "on-error": "#ffffff",
+              "on-tertiary-fixed": "#00201e"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-nav {
+            background: rgba(252, 249, 248, 0.8);
+            backdrop-filter: blur(12px);
+        }
+        .custom-shadow {
+            box-shadow: 0 4px 16px rgba(65, 0, 7, 0.06);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        body::-webkit-scrollbar {
+            display: none;
+        }
+        * {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        *::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface antialiased pb-24">
+<!-- Top Bar: Merged to Top -->
+<header class="sticky top-0 z-50 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="bg-primary/10 p-2 rounded-lg">
+<span class="material-symbols-outlined text-primary text-[22px]" data-icon="location_on" style="font-variation-settings: 'FILL' 1;">location_on</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label text-[10px] uppercase tracking-tighter text-gray-400 font-bold leading-none mb-1">DELIVER TO</span>
+<span class="font-headline text-gray-900 font-bold text-sm tracking-tight">IITB, Powai</span>
+</div>
+</div>
+<div class="h-10 w-10 rounded-full border border-gray-100 shadow-sm overflow-hidden bg-gray-50">
+<img alt="User Profile" class="w-full h-full object-cover" src="/static/images/e77f286150d4c26d6a57fe146500dfe4.jpg"/>
+</div>
+</header>
+<!-- Search Section -->
+<section class="px-4 mt-8">
+<div class="relative flex items-center group cursor-text" onclick="navigate('menu')">
+<span class="material-symbols-outlined absolute left-5 text-outline group-focus-within:text-primary transition-colors" data-icon="search">search</span>
+<input class="w-full bg-white/60 backdrop-blur-md border border-white/30 rounded-full py-4.5 pl-14 pr-12 focus:ring-4 focus:ring-primary/10 text-sm placeholder:text-on-surface-variant/70 shadow-sm transition-all outline-none" placeholder="Search for restaurant, cuisine or a dish" type="text" readonly/>
+<span class="material-symbols-outlined absolute right-5 text-primary" data-icon="mic" style="font-variation-settings: 'FILL' 1;">mic</span>
+</div>
+</section>
+<!-- Quick Categories: Editorial Layout -->
+<section class="mt-6">
+<div class="flex overflow-x-auto hide-scrollbar gap-5 px-4 pb-2">
+<div class="flex flex-col items-center gap-2 shrink-0 cursor-pointer" onclick="navigate('menu')">
+<div class="w-16 h-16 rounded-full bg-gray-50 border border-gray-100 custom-shadow flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" src="/static/images/e31ac5400760520f4a0c9b03abf9b65e.jpg"/>
+</div>
+<span class="text-[11px] font-bold text-gray-700">Pizza</span>
+</div>
+<div class="flex flex-col items-center gap-2 shrink-0 cursor-pointer" onclick="navigate('menu')">
+<div class="w-16 h-16 rounded-full bg-gray-50 border border-gray-100 custom-shadow flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" src="/static/images/1fabbddd636e2f949c3d078d963c2aaf.jpg"/>
+</div>
+<span class="text-[11px] font-bold text-gray-700">Biryani</span>
+</div>
+<div class="flex flex-col items-center gap-2 shrink-0 cursor-pointer" onclick="navigate('menu')">
+<div class="w-16 h-16 rounded-full bg-gray-50 border border-gray-100 custom-shadow flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" src="/static/images/db85c76065a6721b12004340a15a7ce0.jpg"/>
+</div>
+<span class="text-[11px] font-bold text-gray-700">Burger</span>
+</div>
+<div class="flex flex-col items-center gap-2 shrink-0 cursor-pointer" onclick="navigate('menu')">
+<div class="w-16 h-16 rounded-full bg-gray-50 border border-gray-100 custom-shadow flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" src="/static/images/0b286b3d317d193e787068a627b574cd.jpg"/>
+</div>
+<span class="text-[11px] font-bold text-gray-700">Healthy</span>
+</div>
+<div class="flex flex-col items-center gap-2 shrink-0 cursor-pointer" onclick="navigate('menu')">
+<div class="w-16 h-16 rounded-full bg-gray-50 border border-gray-100 custom-shadow flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" src="/static/images/d97bb257ece2330c10c9430a3e20e131.jpg"/>
+</div>
+<span class="text-[11px] font-bold text-gray-700">Fast Food</span>
+</div>
+</div>
+</section>
+<!-- Promotional Hero Banner -->
+<section class="px-4 mt-8">
+<div class="relative h-44 rounded-[28px] overflow-hidden bg-gradient-to-br from-primary to-primary-container p-6 flex flex-col justify-center shadow-lg shadow-primary/10">
+<div class="relative z-10 max-w-[60%]">
+<h2 class="font-headline text-white leading-tight font-black text-2xl drop-shadow-sm">Meals Under $15</h2>
+<p class="text-white/90 mt-1 text-sm font-medium">Curated budget-friendly feasts</p>
+<div class="mt-5 inline-block">
+    <button class="bg-white text-primary px-6 py-2.5 rounded-[18px] font-black text-[11px] uppercase tracking-widest shadow-md active:scale-95 transition-all" onclick="navigate('menu')">Order Now</button>
+</div>
+</div>
+<img class="absolute right-[-20px] top-[-10px] w-56 h-56 object-contain rotate-12 opacity-95" src="/static/images/bfffcd2dcdcd32c4e9c09b0c4d18149b.jpg"/>
+</div>
+</section>
+<!-- Recommendations Section -->
+<section class="mt-10 px-4">
+<div class="flex justify-between items-end mb-6">
+<div>
+<h3 class="font-headline text-headline-sm text-on-surface">Recommendations curated for you</h3>
+<div class="h-1 w-12 bg-primary mt-1 rounded-full"></div>
+</div>
+<span class="text-primary text-sm font-semibold cursor-pointer" onclick="navigate('menu')">See all</span>
+</div>
+<!-- Bento Grid / Asymmetric Grid of Cards -->
+<div id="home-recommendations" class="grid grid-cols-1 gap-8">
+<!-- Dynamic Recommendations from server go here -->
+</div>
+</section>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-6 left-4 right-4 bg-white flex justify-around items-center py-4 px-2 z-50 shadow-[0_12px_45px_rgba(0,0,0,0.12)] rounded-[24px] border border-gray-100">
+<a class="flex flex-col items-center gap-1 text-primary transition-transform active:scale-90 cursor-pointer" onclick="navigate('home')">
+<span class="material-symbols-outlined text-[24px]" data-icon="delivery_dining" style="font-variation-settings: 'FILL' 1;">delivery_dining</span>
+<span class="font-label text-[9px] font-black">Delivery</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-gray-400 hover:text-primary transition-colors cursor-pointer" onclick="navigate('menu')">
+<span class="material-symbols-outlined text-[24px]" data-icon="restaurant">restaurant</span>
+<span class="font-label text-[9px] font-bold">Dining</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-gray-400 hover:text-primary transition-colors cursor-pointer" onclick="navigate('menu')">
+<span class="material-symbols-outlined text-[24px]" data-icon="eco">eco</span>
+<span class="font-label text-[9px] font-bold">Healthy Mode</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-gray-400 hover:text-primary transition-colors cursor-pointer" onclick="navigate('menu')">
+<span class="material-symbols-outlined text-[24px]" data-icon="savings">savings</span>
+<span class="font-label text-[9px] font-bold">Under Rs.250</span>
+</a>
+</nav>
+</body></html>

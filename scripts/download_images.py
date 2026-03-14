@@ -1,7 +1,7 @@
 import re
 import os
 import urllib.request
-from urllib.parse import urlparse
+import hashlib
 
 # Define paths
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,10 +26,11 @@ for f in files:
     print(f"File {f}: Found {len(img_urls)} images.")
     
     for url in img_urls:
-        # Extract the ID from the end of the URL
+        # Extract the ID from the end of the URL and hash it to prevent name length issues
         parts = url.split('/')
         img_id = parts[-1] 
-        local_filename = f"{img_id}.jpg"
+        hashed_name = hashlib.md5(img_id.encode('utf-8')).hexdigest()
+        local_filename = f"{hashed_name}.jpg"
         local_path = os.path.join(static_img_dir, local_filename)
         
         # Download if not exists

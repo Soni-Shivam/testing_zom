@@ -54,6 +54,14 @@ class CheckoutRequest(BaseModel):
 def serve_index():
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
+@app.get("/{view_name}.html")
+def serve_html_view(view_name: str):
+    """Serves the HTML template fragments for the SPA router."""
+    view_path = os.path.join(FRONTEND_DIR, f"{view_name}.html")
+    if os.path.exists(view_path):
+        return FileResponse(view_path)
+    raise HTTPException(status_code=404, detail="View not found")
+
 @app.get("/menu")
 def get_menu():
     """
