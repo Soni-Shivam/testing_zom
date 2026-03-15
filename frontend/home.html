@@ -122,7 +122,7 @@
 <!-- Search Section -->
 <section class="px-4 mt-8">
 <div class="relative flex items-center group cursor-text" onclick="navigate('menu')">
-<span class="material-symbols-outlined absolute left-5 text-outline group-focus-within:text-primary transition-colors" data-icon="search">search</span>
+<span class="material-symbols-outlined absolute left-5 text-black group-focus-within:text-primary transition-colors" data-icon="search" style="color: black !important;">search</span>
 <input class="w-full bg-white/60 backdrop-blur-md border border-white/30 rounded-full py-4.5 pl-14 pr-12 focus:ring-4 focus:ring-primary/10 text-sm placeholder:text-on-surface-variant/70 shadow-sm transition-all outline-none" placeholder="Search for restaurant, cuisine or a dish" type="text" readonly/>
 <span class="material-symbols-outlined absolute right-5 text-primary" data-icon="mic" style="font-variation-settings: 'FILL' 1;">mic</span>
 </div>
@@ -166,7 +166,7 @@
 <section class="px-4 mt-8">
 <div class="relative h-44 rounded-[28px] overflow-hidden bg-gradient-to-br from-primary to-primary-container p-6 flex flex-col justify-center shadow-lg shadow-primary/10">
 <div class="relative z-10 max-w-[60%]">
-<h2 class="font-headline text-white leading-tight font-black text-2xl drop-shadow-sm">Meals Under $15</h2>
+<h2 class="font-headline text-white leading-tight font-black text-2xl drop-shadow-sm">Meals Under 250 Rupees</h2>
 <p class="text-white/90 mt-1 text-sm font-medium">Curated budget-friendly feasts</p>
 <div class="mt-5 inline-block">
     <button class="bg-white text-primary px-6 py-2.5 rounded-[18px] font-black text-[11px] uppercase tracking-widest shadow-md active:scale-95 transition-all" onclick="navigate('menu')">Order Now</button>
@@ -188,6 +188,22 @@
 <div id="home-recommendations" class="grid grid-cols-1 gap-8">
 <!-- Dynamic Recommendations from server go here -->
 </div>
+</section>
+
+<!-- Restaurants List Section -->
+<section class="mt-10 px-4 pb-24">
+    <div class="mb-6">
+        <h3 class="font-headline text-headline-sm text-on-surface font-extrabold text-xl">Restaurants Near You</h3>
+        <div class="h-1 w-12 bg-primary mt-1 rounded-full"></div>
+    </div>
+    <div id="home-restaurants-list" class="space-y-6">
+        <!-- Dynamic Restaurant cards will be injected here -->
+        <div class="animate-pulse space-y-6">
+            <div class="h-48 bg-gray-100 rounded-2xl"></div>
+            <div class="h-6 bg-gray-100 rounded w-1/2"></div>
+            <div class="h-4 bg-gray-100 rounded w-1/4"></div>
+        </div>
+    </div>
 </section>
 <!-- Bottom Navigation Bar -->
 <nav class="fixed bottom-6 left-4 right-4 bg-white flex justify-around items-center py-4 px-2 z-50 shadow-[0_12px_45px_rgba(0,0,0,0.12)] rounded-[24px] border border-gray-100">

@@ -76,18 +76,34 @@ def serve_html_view(view_name: str):
         return FileResponse(view_path)
     raise HTTPException(status_code=404, detail="View not found")
 
-@app.get("/menu")
-def get_menu():
+@app.get("/restaurants")
+def get_restaurants():
     """
-    Returns the restaurant menu categorized, with prices.
-    Uses the canonical data loaded from taxonomy to form the menu.
+    Returns all restaurants grouped by cuisine.
+    """
+    from csao.config.taxonomies import RESTAURANT_POOLS, ALL_CUISINES
+    
+    restaurants = []
+    for cuisine in ALL_CUISINES:
+        pool = RESTAURANT_POOLS.get(cuisine, [])
+        for name in pool:
+            restaurants.append({
+                "name": name,
+                "cuisine": cuisine,
+                "rating": round(3.8 + (pool.index(name) % 10) * 0.1, 1), # Deterministic fake rating
+                "deliveryTime": "25-35 min"
+            })
+    return {"restaurants": restaurants}
+
+@app.get("/menu")
+def get_menu(cuisine: str = "North Indian"):
+    """
+    Returns the restaurant menu categorized for a specific cuisine.
     """
     from csao.config.taxonomies import CUISINE_MENUS
     
-    # Using 'North Indian' as our default Spice Heaven cuisine
-    cuisine = "North Indian"
     if cuisine not in CUISINE_MENUS:
-        raise HTTPException(status_code=404, detail="Cuisine menu not found")
+        raise HTTPException(status_code=404, detail=f"Cuisine '{cuisine}' menu not found")
         
     menu_data = CUISINE_MENUS[cuisine]
     enriched_menu = {}
@@ -96,13 +112,13 @@ def get_menu():
         enriched_category = []
         for item in items:
             name = item["name"]
-            # Fetch actual global catalog price if differs, fallback to 150
+            # Fetch actual global catalog price if it exists in engine, fallback to taxonomy price
             price = engine.item_prices.get(name, item.get("price", 150.0))
             enriched_category.append({
                 "name": name,
                 "price": price,
                 "isVeg": item.get("isVeg", True),
-                "description": item.get("description", f"A delicious {name}")
+                "description": item.get("description", f"A delicious {name} from our {cuisine} kitchen.")
             })
         enriched_menu[category] = enriched_category
             

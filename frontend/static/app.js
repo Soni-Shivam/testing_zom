@@ -5,17 +5,25 @@
 
 // --- GLOBAL STATE ---
 const STATE = {
-    userId: 1, // Using user 1 with some history from engine.py mock DB
+    userId: 1, 
     cart: [],
     menuData: null,
     currentView: 'home',
-    cartTotal: 0
+    cartTotal: 0,
+    currentCuisine: 'North Indian', // Default
+    currentRestaurant: 'Spice Heaven' // Default
 };
 
 // --- ROUTER ---
-async function navigate(viewId) {
-    console.log(`Navigating to ${viewId}`);
+async function navigate(viewId, context = {}) {
+    console.log(`Navigating to ${viewId}`, context);
     
+    if (context.cuisine) STATE.currentCuisine = context.cuisine;
+    if (context.restaurant) STATE.currentRestaurant = context.restaurant;
+
+    // Reset menu data if cuisine changed
+    if (context.cuisine) STATE.menuData = null;
+
     // Hide all views
     document.querySelectorAll('.app-view').forEach(v => v.classList.remove('active'));
     
@@ -49,12 +57,18 @@ async function fetchTemplate(name) {
     return await res.text();
 }
 
-async function fetchMenuData() {
-    if (!STATE.menuData) {
-        const res = await fetch('/menu');
+async function fetchMenuData(cuisine) {
+    if (!STATE.menuData || (cuisine && cuisine !== STATE.currentCuisine)) {
+        const targetCuisine = cuisine || STATE.currentCuisine;
+        const res = await fetch(`/menu?cuisine=${encodeURIComponent(targetCuisine)}`);
         STATE.menuData = await res.json();
     }
     return STATE.menuData;
+}
+
+async function fetchRestaurants() {
+    const res = await fetch('/restaurants');
+    return await res.json();
 }
 
 async function fetchUserAnalytics() {
@@ -127,6 +141,44 @@ async function renderHomeView() {
     } catch(e) {
         console.error("Failed to load analytics", e);
     }
+
+    // Fetch and Render Restaurants List
+    try {
+        const restData = await fetchRestaurants();
+        const restContainer = container.querySelector('#home-restaurants-list');
+        if (restContainer && restData.restaurants) {
+            restContainer.innerHTML = '';
+            restData.restaurants.forEach(rest => {
+                const imgId = Math.abs(rest.name.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0)) % 10 + 1;
+                const restImgUrl = `https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop&q=80`; // Placeholder for now
+                
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 mb-6 cursor-pointer active:scale-[0.98] transition-transform";
+                card.onclick = () => navigate('menu', { cuisine: rest.cuisine, restaurant: rest.name });
+                
+                card.innerHTML = `
+                    <div class="relative h-48">
+                        <img src="${restImgUrl}" class="w-full h-full object-cover" alt="${rest.name}">
+                        <div class="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm">
+                            <span class="text-xs font-bold">${rest.rating}</span>
+                            <span class="material-symbols-outlined text-[12px] text-yellow-500" style="font-variation-settings: 'FILL' 1;">star</span>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-headline font-bold text-gray-900">${rest.name}</h3>
+                                <p class="text-xs text-gray-500 mt-1">${rest.cuisine} • ${rest.deliveryTime}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                restContainer.appendChild(card);
+            });
+        }
+    } catch(e) {
+        console.error("Failed to load restaurants", e);
+    }
 }
 
 // 2. MENU VIEW
@@ -150,6 +202,22 @@ async function renderMenuView() {
             cartBanner.style.cursor = "pointer";
             cartBanner.addEventListener('click', () => navigate('cart'));
         }
+    }
+
+    // Update Header with Restaurant Context
+    const headerTitle = container.querySelector('header h1') || container.querySelector('header span.font-bold');
+    if (headerTitle) {
+        headerTitle.textContent = STATE.currentRestaurant;
+    }
+    const headerSub = container.querySelector('header p') || container.querySelector('header span.text-xs');
+    if (headerSub) {
+        headerSub.textContent = `${STATE.currentCuisine} • 25-35 min`;
+    }
+
+    // Update Search Placeholder
+    const searchPlaceholder = container.querySelector('header .body-md') || container.querySelector('header span.text-on-surface-variant');
+    if (searchPlaceholder) {
+        searchPlaceholder.textContent = `Search in ${STATE.currentRestaurant}`;
     }
     
     // Fetch and Render Dynamic Menu Items

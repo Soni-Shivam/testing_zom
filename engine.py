@@ -367,141 +367,142 @@ class CSAOEngine:
         criterion = nn.CrossEntropyLoss()
 
         trajectory_ids = self.corpus_df["trajectory_id"].unique()
-        self.rng.shuffle(trajectory_ids)
         
         batches_processed = 0
         total_loss = 0.0
 
         from tqdm import tqdm
-        target_trajectories = trajectory_ids[:limit_batches] if limit_batches else trajectory_ids
-        for traj_id in tqdm(target_trajectories, desc="Backbone Training", dynamic_ncols=True):
-            traj_df = self.corpus_df[self.corpus_df["trajectory_id"] == traj_id].sort_values("step_index")
-            if len(traj_df) < 2:
-                continue
+        # Fix: Epoch loop for backbone training
+        for epoch in range(epochs):
+            self.rng.shuffle(trajectory_ids)
+            target_trajectories = trajectory_ids[:limit_batches] if limit_batches else trajectory_ids
+            for traj_id in tqdm(target_trajectories, desc=f"Backbone Training Epoch {epoch+1}", dynamic_ncols=True):
+                traj_df = self.corpus_df[self.corpus_df["trajectory_id"] == traj_id].sort_values("step_index")
+                if len(traj_df) < 2:
+                    continue
 
-            # Define User History extraction (Fix 1)
-            # Find all prior trajectories for this user
-            curr_user_id = traj_df["user_id"].iloc[0]
-            curr_time_step = traj_df["time_step"].iloc[0] if "time_step" in traj_df else 0 # Assuming ordered
-            # We assume trajectory_ids are chronological
-            past_orders = self.corpus_df[
-                (self.corpus_df["user_id"] == curr_user_id) & 
-                (self.corpus_df["trajectory_id"] < traj_id)
-            ].sort_values("trajectory_id")
+                # Define User History extraction (Fix 1)
+                # Find all prior trajectories for this user
+                curr_user_id = traj_df["user_id"].iloc[0]
+                # We assume trajectory_ids are chronological
+                past_orders = self.corpus_df[
+                    (self.corpus_df["user_id"] == curr_user_id) & 
+                    (self.corpus_df["trajectory_id"] < traj_id)
+                ].sort_values("trajectory_id")
 
-            if len(past_orders) > 0:
-                # Take up to T=10 most recent items
-                recent_items = past_orders.tail(10)
-                hist_names = recent_items["item_name"].tolist()
-                hist_qtys = recent_items["quantity"].tolist()
+                if len(past_orders) > 0:
+                    # Take up to T=10 most recent items
+                    recent_items = past_orders.tail(10)
+                    hist_names = recent_items["item_name"].tolist()
+                    hist_qtys = recent_items["quantity"].tolist()
+                    
+                    # Dynamic Length
+                    actual_len = len(hist_names)
+                    h_lens = torch.tensor([actual_len], dtype=torch.long, device=self.device)
+                    
+                    # Pad sequence to T=10
+                    pad_len = 10 - actual_len
+                    hist_names = ["<PAD>"] * pad_len + hist_names
+                    hist_qtys = [0.0] * pad_len + hist_qtys
+                    
+                    h_ids = torch.tensor([self.item_to_idx.get(n, 0) for n in hist_names], dtype=torch.long, device=self.device).unsqueeze(0)
+                    h_qty = torch.tensor(hist_qtys, dtype=torch.float32, device=self.device).unsqueeze(0)
+                    h_slm = self._get_slm_batch(hist_names).unsqueeze(0)
+                else:
+                    # New user, no history
+                    h_ids = torch.zeros((1, 10), dtype=torch.long, device=self.device)
+                    h_qty = torch.zeros((1, 10), dtype=torch.float32, device=self.device)
+                    h_slm = torch.zeros((1, 10, 384), dtype=torch.float32, device=self.device)
+                    h_lens = torch.ones(1, dtype=torch.long, device=self.device)
+
+                cart_items = []
+                cart_total = 0.0
                 
-                # Dynamic Length
-                actual_len = len(hist_names)
-                h_lens = torch.tensor([actual_len], dtype=torch.long, device=self.device)
-                
-                # Pad sequence to T=10
-                pad_len = 10 - actual_len
-                hist_names = ["<PAD>"] * pad_len + hist_names
-                hist_qtys = [0.0] * pad_len + hist_qtys
-                
-                h_ids = torch.tensor([self.item_to_idx.get(n, 0) for n in hist_names], dtype=torch.long, device=self.device).unsqueeze(0)
-                h_qty = torch.tensor(hist_qtys, dtype=torch.float32, device=self.device).unsqueeze(0)
-                h_slm = self._get_slm_batch(hist_names).unsqueeze(0)
-            else:
-                # New user, no history
-                h_ids = torch.zeros((1, 10), dtype=torch.long, device=self.device)
-                h_qty = torch.zeros((1, 10), dtype=torch.float32, device=self.device)
-                h_slm = torch.zeros((1, 10, 384), dtype=torch.float32, device=self.device)
-                h_lens = torch.ones(1, dtype=torch.long, device=self.device)
+                # Step through the trajectory
+                for i in range(len(traj_df) - 1):
+                    curr_row = traj_df.iloc[i]
+                    next_row = traj_df.iloc[i + 1]
 
-            cart_items = []
-            cart_total = 0.0
-            
-            # Step through the trajectory
-            for i in range(len(traj_df) - 1):
-                curr_row = traj_df.iloc[i]
-                next_row = traj_df.iloc[i + 1]
+                    cart_items.append({
+                        "name": curr_row["item_name"],
+                        "category": curr_row["item_category"],
+                        "quantity": curr_row["quantity"],
+                        "unit_price": curr_row["item_price"],
+                    })
+                    cart_total += curr_row["quantity"] * curr_row["item_price"]
 
-                cart_items.append({
-                    "name": curr_row["item_name"],
-                    "category": curr_row["item_category"],
-                    "quantity": curr_row["quantity"],
-                    "unit_price": curr_row["item_price"],
-                })
-                cart_total += curr_row["quantity"] * curr_row["item_price"]
+                    # We need context & gap from OnlinePerRequestCalculator
+                    f_vec, segments = self.online_calculator.compute_feature_vector(
+                        user_id=int(curr_row["user_id"]),
+                        user_aov_ceiling=float(curr_row["aov_ceiling"]),
+                        cart_items=cart_items,
+                        cart_total=cart_total,
+                        cuisine=str(curr_row["cuisine"]),
+                        hour_of_day=int(curr_row["hour_of_day"]),
+                        day_of_week=0,
+                        is_weekend=bool(curr_row["is_weekend"]),
+                        city=str(curr_row["city"]),
+                        candidate_item_name=str(next_row["item_name"]),
+                        candidate_item_category=str(next_row["item_category"]),
+                    )
 
-                # We need context & gap from OnlinePerRequestCalculator
-                f_vec, segments = self.online_calculator.compute_feature_vector(
-                    user_id=int(curr_row["user_id"]),
-                    user_aov_ceiling=float(curr_row["aov_ceiling"]),
-                    cart_items=cart_items,
-                    cart_total=cart_total,
-                    cuisine=str(curr_row["cuisine"]),
-                    hour_of_day=int(curr_row["hour_of_day"]),
-                    day_of_week=0,
-                    is_weekend=bool(curr_row["is_weekend"]),
-                    city=str(curr_row["city"]),
-                    candidate_item_name=str(next_row["item_name"]),
-                    candidate_item_category=str(next_row["item_category"]),
-                )
+                    # Extract context
+                    ctx_cyc_h = f_vec[segments["ctx.cyclical_hour"][0]:segments["ctx.cyclical_hour"][1]]
+                    ctx_cyc_d = f_vec[segments["ctx.cyclical_day"][0]:segments["ctx.cyclical_day"][1]]
+                    ctx_type = f_vec[segments["ctx.day_type"][0]:segments["ctx.day_type"][1]]
+                    ctx_wth = f_vec[segments["ctx.weather_proxy"][0]:segments["ctx.weather_proxy"][1]]
+                    context = np.concatenate([ctx_cyc_h, ctx_cyc_d, ctx_type, ctx_wth])
+                    context_t = torch.tensor(context, dtype=torch.float32, device=self.device).unsqueeze(0)
 
-                # Extract context
-                ctx_cyc_h = f_vec[segments["ctx.cyclical_hour"][0]:segments["ctx.cyclical_hour"][1]]
-                ctx_cyc_d = f_vec[segments["ctx.cyclical_day"][0]:segments["ctx.cyclical_day"][1]]
-                ctx_type = f_vec[segments["ctx.day_type"][0]:segments["ctx.day_type"][1]]
-                ctx_wth = f_vec[segments["ctx.weather_proxy"][0]:segments["ctx.weather_proxy"][1]]
-                context = np.concatenate([ctx_cyc_h, ctx_cyc_d, ctx_type, ctx_wth])
-                context_t = torch.tensor(context, dtype=torch.float32, device=self.device).unsqueeze(0)
+                    # Extract gap
+                    gap_start, gap_end = segments["cart.meal_gap_vector"]
+                    gap = f_vec[gap_start:gap_end]
+                    gap_t = torch.tensor(gap, dtype=torch.float32, device=self.device).unsqueeze(0)
 
-                # Extract gap
-                gap_start, gap_end = segments["cart.meal_gap_vector"]
-                gap = f_vec[gap_start:gap_end]
-                gap_t = torch.tensor(gap, dtype=torch.float32, device=self.device).unsqueeze(0)
+                    target_item_name = next_row["item_name"]
+                    target_idx = self.item_to_idx.get(target_item_name, 0)
+                    
+                    # We will pick 1 target and 7 negative samples
+                    cands = [target_item_name]
+                    all_taxonomic_items = list(self.item_to_idx.keys())
+                    while len(cands) < 8:
+                        neg = self.rng.choice(all_taxonomic_items)
+                        if neg not in cands:
+                            cands.append(neg)
+                    
+                    # [Taxonomy Fix 3]: Fallback Safety using .get()
+                    cand_ids = torch.tensor([self.item_to_idx.get(c, 0) for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
+                    cand_slm = self._get_slm_batch(cands).unsqueeze(0)
 
-                target_item_name = next_row["item_name"]
-                target_idx = self.item_to_idx.get(target_item_name, 0)
-                
-                # We will pick 1 target and 7 negative samples
-                cands = [target_item_name]
-                all_taxonomic_items = list(self.item_to_idx.keys())
-                while len(cands) < 8:
-                    neg = self.rng.choice(all_taxonomic_items)
-                    if neg not in cands:
-                        cands.append(neg)
-                
-                # [Taxonomy Fix 3]: Fallback Safety using .get()
-                cand_ids = torch.tensor([self.item_to_idx.get(c, 0) for c in cands], dtype=torch.long, device=self.device).unsqueeze(0)
-                cand_slm = self._get_slm_batch(cands).unsqueeze(0)
+                    # Prepare Cart
+                    cart_idx_seq = [self.item_to_idx.get(c["name"], 0) for c in cart_items]
+                    cart_qty_seq = [c["quantity"] for c in cart_items]
+                    cart_names = [c["name"] for c in cart_items]
+                    
+                    cart_t = torch.tensor(cart_idx_seq, dtype=torch.long, device=self.device).unsqueeze(0)
+                    qty_t = torch.tensor(cart_qty_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
+                    mask_t = torch.zeros(1, len(cart_idx_seq), dtype=torch.bool, device=self.device)
 
-                # Prepare Cart
-                cart_idx_seq = [self.item_to_idx.get(c["name"], 0) for c in cart_items]
-                cart_qty_seq = [c["quantity"] for c in cart_items]
-                cart_names = [c["name"] for c in cart_items]
-                
-                cart_t = torch.tensor(cart_idx_seq, dtype=torch.long, device=self.device).unsqueeze(0)
-                qty_t = torch.tensor(cart_qty_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
-                mask_t = torch.zeros(1, len(cart_idx_seq), dtype=torch.bool, device=self.device)
+                    # Prepare Cart SLM
+                    cart_slm = self._get_slm_batch(cart_names).unsqueeze(0)
 
-                # Prepare Cart SLM
-                cart_slm = self._get_slm_batch(cart_names).unsqueeze(0)
+                    # Forward pass
+                    scores = self.neural_model(
+                        cart_t, qty_t, cart_slm, mask_t,
+                        h_ids, h_qty, h_slm, h_lens,
+                        context_t, gap_t, cand_ids, cand_slm
+                    )
 
-                # Forward pass
-                scores = self.neural_model(
-                    cart_t, qty_t, cart_slm, mask_t,
-                    h_ids, h_qty, h_slm, h_lens,
-                    context_t, gap_t, cand_ids, cand_slm
-                )
+                    # Target is index 0
+                    labels = torch.zeros(1, dtype=torch.long, device=self.device)
+                    loss = criterion(scores, labels)
 
-                # Target is index 0
-                labels = torch.zeros(1, dtype=torch.long, device=self.device)
-                loss = criterion(scores, labels)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                total_loss += loss.item()
-                batches_processed += 1
+                    total_loss += loss.item()
+                    batches_processed += 1
 
         print(f"[Engine] Backbone Training Complete. Processed {batches_processed} steps, Avg Loss: {total_loss/max(1, batches_processed):.4f}")
         
@@ -522,10 +523,9 @@ class CSAOEngine:
         lgb_groups = []
         
         # We will use the remaining trajectories as validation
-        # If limit_batches is None, we trained on all of them. To get validation data, we'll
-        # just pick the last 20 trajectories from the full list.
-        if limit_batches is None:
-            val_start_idx = len(trajectory_ids) - 20
+        # Fix: Better validation slicing to avoid empty sets
+        if limit_batches is None or limit_batches >= len(trajectory_ids) - 20:
+            val_start_idx = max(0, len(trajectory_ids) - 20)
             val_end_idx = len(trajectory_ids)
         else:
             val_start_idx = limit_batches
@@ -669,11 +669,13 @@ class CSAOEngine:
                 
                 lgb_groups.append(query_group_size)
 
-        print(f"[Engine] Training LightGBM on {len(lgb_features)} True Validations Samples...")
-        X = np.array(lgb_features)
-        y = np.array(lgb_labels)
-        groups = np.array(lgb_groups)
-        self.reranker.train(X, y, groups)
+        if len(lgb_features) == 0:
+            print("[Engine] Warning: Not enough validation data for LightGBM. Skipping re-ranker training.")
+        else:
+            X = np.array(lgb_features)
+            y = np.array(lgb_labels)
+            groups = np.array(lgb_groups)
+            self.reranker.train(X, y, groups)
         
         print("[Engine] Model Training Orchestration Complete.")
 
@@ -778,7 +780,7 @@ class CSAOEngine:
         
         def eval():
             optimizer.zero_grad()
-            loss = criterion(all_logits / self.temperature, all_labels)
+            loss = criterion(all_logits / torch.clamp(self.temperature, min=1e-3), all_labels)
             loss.backward()
             return loss
             
@@ -1074,7 +1076,10 @@ class CSAOEngine:
         candidates = [c for c in candidates_set if c.lower().strip() not in cart_names_norm]
         if not candidates:
             # Fallback just in case they added the entire menu to their cart
-            candidates = list(candidates_set)
+            candidates = [c for c in candidates_set if c.lower().strip() not in cart_names_norm]
+            # Extreme fallback
+            if not candidates:
+                candidates = ["Dummy"]
         
         print(f"[Inference] predict_addon: Modeling {len(candidates)} candidates. Cart has: {cart_names}")
 
@@ -1161,7 +1166,7 @@ class CSAOEngine:
             )  # (1, K)
 
             # Apply Temperature scaling to logits
-            raw_logits = scores / self.temperature
+            raw_logits = scores / torch.clamp(self.temperature, min=1e-3)
             # Fix 1: Softmax over candidate dimension (dim=1) so probabilities sum to 1,
             # which is required for Temperature Scaling calibration to be meaningful.
             probs = torch.softmax(raw_logits, dim=1)[0].cpu().numpy()
@@ -1273,8 +1278,10 @@ class CSAOEngine:
         
         # Prepare data for MMR math
         cand_names = [item for item, _ in ranked_base]
-        cand_probs = {item: score for item, score in ranked_base}
+        # Fix: Fetch neural score from valid_candidates, not ranked_base
+        cand_probs = {c.item_name: c.neural_score for c in valid_candidates}
         cand_gfs = {c.item_name: c.gap_fill_score for c in valid_candidates}
+        # ranked_base contains LightGBM scores
         cand_lgbm_scores = {item: score for item, score in ranked_base}
         
         # Pre-fetch all 384-d SLM vectors for candidate similarity computations
@@ -1293,10 +1300,14 @@ class CSAOEngine:
                 # Part 1: Relevance Trade-off
                 p_i = cand_probs[item]
                 gfs_i = cand_gfs[item]
-                lgbm_score_i = cand_lgbm_scores[item]
+                raw_lgbm = cand_lgbm_scores[item]
                 
-                # Correctly merge the calibrated LightGBM score as the primary relevance driver
-                relevance = lambda_param * lgbm_score_i * (1.0 + alpha_param * gfs_i)
+                # Fix: Sigmoid transform to constrain LightGBM score (log-odds) to 0-1
+                import math
+                norm_lgbm_score = 1.0 / (1.0 + math.exp(-raw_lgbm))
+                
+                # Correctly merge the calibrated LightGBM score (now normalized)
+                relevance = lambda_param * norm_lgbm_score * (1.0 + alpha_param * gfs_i)
                 
                 # Part 2: Diversity Penalty
                 max_sim = 0.0
@@ -1399,7 +1410,7 @@ if __name__ == "__main__":
         {"name": "Garlic Naan", "category": "Breads", "quantity": 2, "unit_price": 60}
     ]
     
-    ranked_candidates = engine.predict_addon(
+    ranked_candidates, debug_payload = engine.predict_addon(
         user_id=12345,
         cart_items=live_cart,
         restaurant_id="rest_999",
