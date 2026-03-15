@@ -1067,10 +1067,19 @@ class CSAOEngine:
         # [Taxonomy Fix 4]: Taxonomy-Driven Candidate Generation (NO MAX CAP)
         # Score the entire eligible taxonomic pool; do NOT truncate to 20.
         
-        # Inject Beverages and Desserts explicitly to guarantee cross-selling entropy
+        # Inject Beverages and Desserts — but ONLY from the current restaurant's cuisine.
+        # Injecting from all cuisines produces identical cross-cuisine pools that dominate
+        # scoring and make every restaurant's recommendations look the same.
+        cuisine_menu = CUISINE_MENUS.get(restaurant_cuisine, {})
+        cuisine_item_names = {
+            item["name"].lower().strip()
+            for cat_items in cuisine_menu.values()
+            for item in cat_items
+        }
         for item in self.item_meta:
             if item.get("category") in ["Beverages", "Desserts"]:
-                candidates_set.add(item["item_name"])
+                if item["item_name"].lower().strip() in cuisine_item_names:
+                    candidates_set.add(item["item_name"])
                 
         # Mask out any items that are already in the cart (Final Pass)
         candidates = [c for c in candidates_set if c.lower().strip() not in cart_names_norm]
@@ -1174,9 +1183,11 @@ class CSAOEngine:
         # Fix 2: Entropy-based popularity fallback.
         # If the model has very low confidence (high entropy), bypass LightGBM and
         # return city-level popularity rankings instead.
-        H_max = 2.5  # Maximum acceptable entropy (~uniform over ~12 items)
+        # H_max is now dynamic: 85% of the theoretical max entropy for the pool,
+        # capped at 3.8 so genuinely degenerate (fully uniform) cases still trigger.
+        H_max = min(3.8, 0.85 * float(np.log(max(len(candidates), 1))))
         entropy = -np.sum(probs * np.log(probs + 1e-9))
-        print(f"[Inference] Softmax entropy: {entropy:.4f} (H_max={H_max})")
+        print(f"[Inference] Softmax entropy: {entropy:.4f} (H_max={H_max:.4f}, pool={len(candidates)})")
 
         if entropy > H_max:
             print("[Inference] High entropy detected — triggering popularity fallback.")
@@ -1224,7 +1235,7 @@ class CSAOEngine:
 
             # Dynamic Wallet Cap: Ensure we don't completely lock out users making large orders.
             effective_wallet = max(user_aov, cart_total)
-            margin_allowance = max(150.0, effective_wallet * 0.3)
+            margin_allowance = max(250.0, effective_wallet * 0.5)
 
             if cart_total + price > effective_wallet + margin_allowance:
                 continue  # Discard VERY expensive items outside allowed bounds
@@ -1272,8 +1283,8 @@ class CSAOEngine:
         
         # [Fix 4B]: Maximal Marginal Relevance (MMR)
         # i* = argmax[ lambda * P(i) * (1 + alpha * GFS(i)) - (1 - lambda) * max_j_in_R Sim(i, j) ]
-        lambda_param = 0.7
-        alpha_param = 0.2
+        lambda_param = 0.5
+        alpha_param = 0.1
         k_target = min(8, len(ranked_base))
         
         # Prepare data for MMR math

@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -49,7 +49,7 @@ class RecommendRequest(BaseModel):
     cart: List[CartItem]
     restaurant_id: str = "rest_999"
     restaurant_name: str = "Spice Heaven"
-    restaurant_cuisine: str = "North Indian"
+    restaurant_cuisine: Optional[str] = None  # Require frontend to pass actual cuisine; None triggers dynamic catalog fallback
     city: str = "Delhi-NCR"
     hour_of_day: int = 20
     day_of_week: int = 5

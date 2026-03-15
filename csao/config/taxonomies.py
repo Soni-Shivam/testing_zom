@@ -443,7 +443,7 @@ INTENT_NAMES = list(SESSION_INTENTS.keys())
 # These are used to build the meal gap vector g_k.
 
 MEAL_TEMPLATES = {
-    "North Indian":    {"main": 1, "side": 2, "beverage": 1},
+    "North Indian":    {"main": 1, "side": 1, "beverage": 1},
     "Mughlai":         {"main": 1, "side": 1, "beverage": 1},
     "South Indian":    {"main": 1, "side": 2, "beverage": 1},
     "Chinese":         {"main": 1, "side": 1, "beverage": 1},
@@ -479,16 +479,16 @@ GEOGRAPHIC_COOCCURRENCE = {
         {"trigger": "Hyderabadi Mutton Biryani",  "boost_items": ["Mirchi Ka Salan", "Salan", "Raita"], "factor": 5.0},
     ],
     "Delhi-NCR": [
-        {"trigger": "Butter Chicken",   "boost_items": ["Garlic Naan", "Naan", "Lassi"],  "factor": 3.0},
-        {"trigger": "Chole Bhature",    "boost_items": ["Lassi", "Onion Salad"],            "factor": 3.0},
+        {"trigger": "Butter Chicken",   "boost_items": ["Garlic Naan", "Naan", "Lassi"],  "factor": 1.5},
+        {"trigger": "Chole Bhature",    "boost_items": ["Lassi", "Onion Salad"],            "factor": 1.5},
     ],
     "Chennai": [
         {"trigger": "Masala Dosa",      "boost_items": ["Coconut Chutney", "Sambar", "Filter Coffee"], "factor": 4.0},
         {"trigger": "Idli Sambar",      "boost_items": ["Coconut Chutney", "Filter Coffee"],            "factor": 4.0},
     ],
     "Mumbai": [
-        {"trigger": "Pav Bhaji",        "boost_items": ["Masala Soda", "Lassi"],            "factor": 3.0},
-        {"trigger": "Fish Curry",       "boost_items": ["Steamed Rice", "Sol Kadhi"],       "factor": 4.0},
+        {"trigger": "Pav Bhaji",        "boost_items": ["Masala Soda", "Lassi"],            "factor": 1.5},
+        {"trigger": "Fish Curry",       "boost_items": ["Steamed Rice", "Sol Kadhi"],       "factor": 1.5},
     ],
     "Bangalore": [
         {"trigger": "Masala Dosa",      "boost_items": ["Coconut Chutney", "Filter Coffee"],"factor": 3.5},

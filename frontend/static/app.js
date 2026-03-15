@@ -497,6 +497,9 @@ async function fetchSmartAddons() {
     // Map internal cart state to API request format
     const payload = {
         user_id: STATE.userId,
+        restaurant_cuisine: STATE.currentCuisine,
+        restaurant_name: STATE.currentRestaurant,
+        city: 'Delhi-NCR',
         cart: STATE.cart.map(c => ({
             name: c.name,
             category: c.category,
