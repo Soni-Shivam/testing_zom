@@ -134,6 +134,69 @@
     <!-- ========================================== -->
     <div id="view-cart" class="app-view"></div>
 
+    </div>
+
+    <!-- Toast Notification (Hidden by default) -->
+    <div id="simulator-toast" class="fixed top-10 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 text-green-400 font-bold px-4 py-2 rounded-full shadow-2xl z-[100] text-xs uppercase tracking-widest opacity-0 transform -translate-y-4 transition-all duration-300 flex items-center gap-2 pointer-events-none">
+        <span class="material-symbols-outlined text-[16px]">check_circle</span>
+        <span>Persona Applied • AI Refreshed</span>
+    </div>
+
+    <!-- Simulator FAB (Floating Action Button) -->
+    <button id="simulator-fab" onclick="toggleSimulator()" class="fixed bottom-24 right-4 z-[60] bg-gray-900 text-white p-3 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.5)] border border-gray-700 active:scale-90 transition-transform flex items-center justify-center">
+        <span class="material-symbols-outlined text-[24px]">tune</span>
+    </button>
+
+    <!-- Simulator Panel (Slide-up Bottom Sheet) -->
+    <div id="simulator-panel" class="absolute bottom-0 left-0 right-0 max-h-[90%] overflow-y-auto bg-gray-950/95 backdrop-blur-xl border-t border-gray-800 rounded-t-[32px] p-6 z-[70] transform translate-y-full transition-transform duration-300 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-white font-headline font-bold text-lg flex items-center gap-2">
+                <span class="material-symbols-outlined text-purple-400">smart_toy</span>
+                Persona Simulator
+            </h2>
+            <button onclick="toggleSimulator()" class="text-gray-400 hover:text-white bg-gray-800 p-1.5 rounded-full transition-colors flex items-center justify-center">
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        </div>
+
+        <div class="space-y-5 pb-6">
+            <!-- Preset Selector -->
+            <div>
+                <label class="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2 block">Behavior Preset</label>
+                <select id="sim-preset-select" class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 focus:ring-2 focus:ring-purple-500 outline-none appearance-none font-medium cursor-pointer">
+                    <option value="The Health Nut">The Health Nut</option>
+                    <option value="The Budget Student">The Budget Student</option>
+                    <option value="The Family/Bulk Orderer">The Family/Bulk Orderer</option>
+                    <option value="The Brand New User">The Brand New User</option>
+                </select>
+            </div>
+
+            <!-- Sliders -->
+            <div class="bg-gray-900/50 p-4 rounded-xl border border-gray-800 space-y-4">
+                <div>
+                    <div class="flex justify-between text-xs text-gray-400 mb-2">
+                        <span>Avg Order Value (AOV)</span>
+                        <span id="sim-aov-display" class="font-bold text-white font-mono">₹500</span>
+                    </div>
+                    <input type="range" id="sim-aov-slider" min="0" max="2000" step="50" value="500" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs text-gray-400 mb-2">
+                        <span>Past Order Count</span>
+                        <span id="sim-order-display" class="font-bold text-white font-mono">15</span>
+                    </div>
+                    <input type="range" id="sim-order-slider" min="0" max="50" step="1" value="15" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <button onclick="applyPersona()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold tracking-wide py-4 rounded-xl shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all active:scale-[0.98] mt-2">
+                Inject Persona Vector
+            </button>
+        </div>
+    </div>
+
 </div>
 
 <!-- The SPA Logic Engine -->

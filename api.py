@@ -28,6 +28,15 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# Mount product images directory
+FOOD_IMAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "visuals", "generated_food_images")
+print(f"Mounting product images from: {FOOD_IMAGES_DIR}")
+if os.path.exists(FOOD_IMAGES_DIR):
+    app.mount("/product-images", StaticFiles(directory=FOOD_IMAGES_DIR), name="product_images")
+    print(f"Successfully mounted /product-images. Contains {len(os.listdir(FOOD_IMAGES_DIR))} files.")
+else:
+    print(f"Error: {FOOD_IMAGES_DIR} does not exist!")
+
 # Setup models for request validation
 class CartItem(BaseModel):
     name: str
@@ -49,6 +58,11 @@ class RecommendRequest(BaseModel):
 class CheckoutRequest(BaseModel):
     user_id: int
     cart: List[CartItem]
+
+class SimulateRequest(BaseModel):
+    mean_aov: float
+    order_count: int
+    persona_type: str
 
 @app.get("/")
 def serve_index():
@@ -184,6 +198,56 @@ def get_user_analytics(user_id: int):
             "homepage_recommendations": enriched_recs
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/user/{user_id}/simulate")
+def simulate_persona(user_id: int, req: SimulateRequest):
+    """
+    Forcefully overrides the user's historical profile for demo purposes.
+    """
+    try:
+        if user_id not in engine.user_db:
+            engine.user_db[user_id] = {
+                "past_ordered_items": [],
+                "past_order_totals": [],
+                "favorite_cuisines": {}
+            }
+            
+        profile = engine.user_db[user_id]
+        
+        # Override basic stats
+        # We simulate this by adjusting the totals directly
+        # The engine infers `mean_aov` by doing sum(past_order_totals) / len(past_order_totals)
+        # So we force the list arrays to match our requested AOV and counts
+        profile["past_order_totals"] = [req.mean_aov] * req.order_count
+        
+        # Inject exact history based on persona
+        if req.persona_type == "The Health Nut":
+            profile["past_ordered_items"] = (
+                [{"name": "Greek Salad", "quantity": 1}] * 5 +
+                [{"name": "Diet Coke", "quantity": 1}] * 5 +
+                [{"name": "Quinoa Bowl", "quantity": 1}] * 5
+            )
+        elif req.persona_type == "The Budget Student":
+            profile["past_ordered_items"] = [{"name": "Masala Dosa", "quantity": 1}] * 5
+        elif req.persona_type == "The Family/Bulk Orderer":
+            profile["past_ordered_items"] = (
+                [{"name": "Chicken Biryani", "quantity": 4}] * 8 +
+                [{"name": "Garlic Naan", "quantity": 6}] * 8
+            )
+        elif req.persona_type == "The Brand New User":
+            profile["past_ordered_items"] = []
+            profile["past_order_totals"] = []
+            
+        # Clear out cuisine counts and let it rebuild if needed, though engine doesn't actively use it yet for homepage
+        profile["favorite_cuisines"] = {}
+            
+        print(f"User {user_id} simulated as {req.persona_type}: AOV={req.mean_aov}, Orders={req.order_count}")
+        return {"status": "success", "message": f"Persona {req.persona_type} applied"}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

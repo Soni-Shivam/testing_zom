@@ -90,15 +90,16 @@ async function renderHomeView() {
             
             // Loop over top 3 recommendations
             data.homepage_recommendations.slice(0, 3).forEach((rec) => {
-                // Using an avatar placeholder since we don't have distinct product images mapped
-                const imgUrl = `https://ui-avatars.com/api/?name=${rec.name.replace(/\s/g, '+')}&background=fceae9&color=E23744&size=200`;
+                const imgName = rec.name.replace(/\s/g, '_') + '.png';
+                const productImgUrl = `/product-images/${imgName}`;
+                const avatarFallback = `https://ui-avatars.com/api/?name=${rec.name.replace(/\s/g, '+')}&background=fceae9&color=E23744&size=200`;
                 
                 // Add card HTML
                 // Make it clickable to go to menu
                 recContainer.innerHTML += `
                 <div class="bg-surface-container-lowest rounded-xl overflow-hidden custom-shadow cursor-pointer transition-transform active:scale-[0.98]" onclick="navigate('menu')">
                     <div class="relative h-44">
-                        <img class="w-full h-full object-cover" src="${imgUrl}" alt="${rec.name}"/>
+                        <img class="w-full h-full object-cover" src="${productImgUrl}" onerror="this.src='${avatarFallback}'" alt="${rec.name}"/>
                         <div class="absolute top-4 left-0 bg-primary text-on-primary px-3 py-1 rounded-r-lg font-bold text-xs uppercase tracking-wide shadow-sm">
                             Recommended
                         </div>
@@ -181,8 +182,36 @@ async function renderMenuView() {
                 
             // Generate a deterministic image URL based on name hash if we had them, 
             // but for simplicity, use a generic placeholder colored box or missing img icon
-            const fallbackImg = `https://ui-avatars.com/api/?name=${item.name.replace(/\s/g, '+')}&background=fceae9&color=E23744`;
+            const imgName = item.name.replace(/\s/g, '_') + '.png';
+            const productImgUrl = `/product-images/${imgName}`;
+            const avatarFallback = `https://ui-avatars.com/api/?name=${item.name.replace(/\s/g, '+')}&background=fceae9&color=E23744`;
             
+            // Check if item is in cart to show quantity controls
+            const cartItem = STATE.cart.find(i => i.name === item.name);
+            const quantity = cartItem ? cartItem.quantity : 0;
+            
+            let actionButtonHtml = "";
+            if (quantity > 0) {
+                actionButtonHtml = `
+                    <div class="absolute -bottom-3 left-1/2 -translate-x-1/2 flex items-center bg-primary border border-primary rounded-lg overflow-hidden shadow-sm">
+                        <button class="px-2 py-1 text-white hover:bg-red-700 transition-colors" onclick="updateCartItemFromMenu('${item.name}', -1)">
+                            <span class="material-symbols-outlined text-[16px]">remove</span>
+                        </button>
+                        <span class="px-2 text-white font-bold text-xs min-w-[20px] text-center">${quantity}</span>
+                        <button class="px-2 py-1 text-white hover:bg-red-700 transition-colors" onclick="updateCartItemFromMenu('${item.name}', 1)">
+                            <span class="material-symbols-outlined text-[16px]">add</span>
+                        </button>
+                    </div>
+                `;
+            } else {
+                actionButtonHtml = `
+                    <button class="add-to-cart-btn absolute -bottom-3 left-1/2 -translate-x-1/2 bg-white text-primary border border-gray-200 font-bold px-6 py-1 rounded-lg shadow-sm text-sm"
+                        data-name="${item.name}" data-price="${item.price}" data-category="${category}">
+                        ADD
+                    </button>
+                `;
+            }
+
             card.innerHTML = `
                 <div class="flex-1">
                     ${iconHtml}
@@ -191,11 +220,8 @@ async function renderMenuView() {
                     <p class="text-gray-500 text-sm mt-2 line-clamp-2">${item.description}</p>
                 </div>
                 <div class="relative w-28 h-28 shrink-0">
-                    <img src="${fallbackImg}" class="w-full h-full object-cover rounded-xl" alt="${item.name}">
-                    <button class="add-to-cart-btn absolute -bottom-3 left-1/2 -translate-x-1/2 bg-white text-primary border border-gray-200 font-bold px-6 py-1 rounded-lg shadow-sm text-sm"
-                        data-name="${item.name}" data-price="${item.price}" data-category="${category}">
-                        ADD
-                    </button>
+                    <img src="${productImgUrl}" onerror="this.src='${avatarFallback}'" class="w-full h-full object-cover rounded-xl" alt="${item.name}">
+                    ${actionButtonHtml}
                 </div>
             `;
             listContainer.appendChild(card);
@@ -341,16 +367,26 @@ function addToCart(item) {
     
     updateMenuCartBanner();
     
-    // Little animation feedback
-    const btn = document.querySelector(`button[data-name="${item.name}"]`);
-    if(btn) {
-        const origText = btn.textContent;
-        btn.textContent = "ADDED";
-        btn.classList.add('bg-green-500', 'text-white', 'border-green-500');
-        setTimeout(() => {
-            btn.textContent = origText;
-            btn.classList.remove('bg-green-500', 'text-white', 'border-green-500');
-        }, 1000);
+    // Refresh menu if we are in it
+    if (STATE.currentView === 'menu') {
+        renderMenuView();
+    }
+}
+
+// Global helper for menu quantity buttons
+window.updateCartItemFromMenu = function(name, delta) {
+    const itemIndex = STATE.cart.findIndex(i => i.name === name);
+    if (itemIndex !== -1) {
+        updateCartItem(itemIndex, delta);
+    } else if (delta > 0) {
+        // This shouldn't happen with the current UI logic but for safety:
+        // Find item in menu data to get price and category
+        let found = null;
+        Object.entries(STATE.menuData.menu).forEach(([cat, items]) => {
+            const item = items.find(i => i.name === name);
+            if (item) found = { ...item, category: cat };
+        });
+        if (found) addToCart({ ...found, quantity: 1 });
     }
 }
 
@@ -360,8 +396,13 @@ function updateCartItem(index, delta) {
         STATE.cart.splice(index, 1);
     }
     // Re-render
-    renderCartView();
-    fetchSmartAddons();
+    if (STATE.currentView === 'cart') {
+        renderCartView();
+        fetchSmartAddons();
+    } else if (STATE.currentView === 'menu') {
+        renderMenuView();
+    }
+    updateMenuCartBanner();
 }
 
 function updateMenuCartBanner() {
@@ -413,13 +454,14 @@ async function fetchSmartAddons() {
         railContainer.innerHTML = '';
         
         recommendations.slice(0, 5).forEach(rec => {
-            // Again, placeholder image based on name
-            const imgUrl = `https://ui-avatars.com/api/?name=${rec.name.replace(/\s/g, '+')}&background=random`;
+            const imgName = rec.name.replace(/\s/g, '_') + '.png';
+            const productImgUrl = `/product-images/${imgName}`;
+            const avatarFallback = `https://ui-avatars.com/api/?name=${rec.name.replace(/\s/g, '+')}&background=random`;
             
             railContainer.innerHTML += `
             <div class="flex-shrink-0 w-36 bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100">
                 <div class="h-24 w-full">
-                    <img src="${imgUrl}" class="w-full h-full object-cover" alt="${rec.name}">
+                    <img src="${productImgUrl}" onerror="this.src='${avatarFallback}'" class="w-full h-full object-cover" alt="${rec.name}">
                 </div>
                 <div class="p-3">
                     <h4 class="text-label-sm font-bold truncate" title="${rec.name}">${rec.name}</h4>
@@ -491,4 +533,109 @@ async function submitOrder() {
 document.addEventListener("DOMContentLoaded", () => {
     // Start at Home
     navigate('home');
+    initSimulator();
 });
+
+// --- SIMULATOR LOGIC ---
+
+function toggleSimulator() {
+    const panel = document.getElementById('simulator-panel');
+    if (panel.classList.contains('translate-y-full')) {
+        panel.classList.remove('translate-y-full');
+    } else {
+        panel.classList.add('translate-y-full');
+    }
+}
+
+function showToast() {
+    const toast = document.getElementById('simulator-toast');
+    toast.classList.remove('opacity-0', '-translate-y-4');
+    toast.classList.add('opacity-100', 'translate-y-0');
+    
+    setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', '-translate-y-4');
+    }, 3000);
+}
+
+function initSimulator() {
+    const presetSelect = document.getElementById('sim-preset-select');
+    const aovSlider = document.getElementById('sim-aov-slider');
+    const orderSlider = document.getElementById('sim-order-slider');
+    const aovDisplay = document.getElementById('sim-aov-display');
+    const orderDisplay = document.getElementById('sim-order-display');
+
+    // Update displays when sliders move manually
+    aovSlider.addEventListener('input', (e) => {
+        aovDisplay.textContent = `₹${e.target.value}`;
+    });
+    orderSlider.addEventListener('input', (e) => {
+        orderDisplay.textContent = e.target.value;
+    });
+
+    // Auto-update sliders when preset changes
+    presetSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === "The Health Nut") {
+            aovSlider.value = 500;
+            orderSlider.value = 15;
+        } else if (val === "The Budget Student") {
+            aovSlider.value = 200;
+            orderSlider.value = 5;
+        } else if (val === "The Family/Bulk Orderer") {
+            aovSlider.value = 1500;
+            orderSlider.value = 8;
+        } else if (val === "The Brand New User") {
+            aovSlider.value = 0;
+            orderSlider.value = 0;
+        }
+        
+        // Trigger generic input event to update displays
+        aovSlider.dispatchEvent(new Event('input'));
+        orderSlider.dispatchEvent(new Event('input'));
+    });
+    
+    // Initialize default display
+    presetSelect.dispatchEvent(new Event('change'));
+}
+
+async function applyPersona() {
+    const presetSelect = document.getElementById('sim-preset-select');
+    const aovSlider = document.getElementById('sim-aov-slider');
+    const orderSlider = document.getElementById('sim-order-slider');
+    
+    const payload = {
+        persona_type: presetSelect.value,
+        mean_aov: parseFloat(aovSlider.value),
+        order_count: parseInt(orderSlider.value, 10)
+    };
+    
+    try {
+        const res = await fetch(`/user/${STATE.userId}/simulate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) throw new Error("Simulation failed");
+        
+        // Close panel and show success toast
+        toggleSimulator();
+        showToast();
+        
+        // Force refresh UI based on current view to reflect new persona vectors
+        if (STATE.currentView === 'home') {
+            const container = document.getElementById('view-home');
+            // Hard wipe the recommendations to force the skeleton/re-render cleanly
+            const recContainer = container.querySelector('#home-recommendations');
+            if(recContainer) recContainer.innerHTML = '';
+            await renderHomeView();
+        } else if (STATE.currentView === 'cart') {
+            await fetchSmartAddons();
+        }
+        
+    } catch(e) {
+        console.error(e);
+        alert("Failed to apply persona override");
+    }
+}

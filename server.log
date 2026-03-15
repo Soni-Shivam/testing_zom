@@ -1,0 +1,203 @@
+nohup: ignoring input
+INFO:     Started server process [199761]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+
+[Engine] Loading pre-trained artifacts from: /home/shivam/code-masala/zoma-thon/artifacts
+   item_mappings loaded  (116 items)
+   item_meta loaded      (116 entries)
+   corpus_df loaded      (39491 rows)
+   user_db loaded       (3 users)
+  [Engine] Re-hydrating SimulatedRedisStore (NightlyJob + NRT)...
+[NightlyOfflineJob] Starting nightly feature computation...
+[NightlyOfflineJob] Completed in 2.85s
+  → 1985 users × 3 feature sets = 5955 user feature vectors
+  → 116 item SLM embeddings (128-d each)
+[NearRealTimeJob] Updating delivery-zone velocity...
+[NearRealTimeJob] Completed in 0.01s
+  → 558 zone-velocity entries updated
+   feature store hydrated
+  [Engine] Re-building ColdStartRouter from saved corpus...
+[RestaurantColdStart] Building cuisine knowledge graph (offline)...
+  → 46 main items indexed
+  → 1150 total triples stored
+   ColdStartRouter ready
+   SLM cache replayed    (117 embeddings)
+   neural_model loaded and set to eval()
+   temperature loaded    (T = 1.1575)
+   LightGBM reranker loaded
+[Engine]  All artifacts loaded. Engine is inference-ready.
+
+Mounting product images from: /home/shivam/code-masala/zoma-thon/visuals/generated_food_images
+Successfully mounted /product-images. Contains 115 files.
+Starting API Server on http://localhost:8000
+INFO:     127.0.0.1:48360 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48360 - "GET /user/1/analytics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48360 - "GET /product-images/Butter_Chicken.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48384 - "GET /product-images/Margherita_Pizza.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48372 - "GET /product-images/Masala_Dosa.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40654 - "GET /menu HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40654 - "GET /product-images/Paneer_Tikka_Masala.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40664 - "GET /product-images/Dal_Makhani.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40676 - "GET /product-images/Chole_Bhature.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40680 - "GET /product-images/Rajma_Chawal.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40682 - "GET /product-images/Kadai_Paneer.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40696 - "GET /product-images/Naan.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40680 - "GET /product-images/Garlic_Naan.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40654 - "GET /product-images/Butter_Roti.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40664 - "GET /product-images/Raita.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40682 - "GET /product-images/Papad.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40676 - "GET /product-images/Onion_Salad.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40696 - "GET /product-images/Lassi.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40664 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40680 - "GET /product-images/Jaljeera.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40654 - "GET /product-images/Buttermilk.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40696 - "GET /product-images/Rasmalai.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40676 - "GET /product-images/Gulab_Jamun.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40664 - "GET /product-images/Kheer.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49838 - "GET /user/1/analytics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49852 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:44780 - "GET /cart.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44780 - "GET /static/images/f9c8af819b8fc9c3c4d29f91eff2c515.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44786 - "GET /static/images/b49502aea6a289a1a5eff0fce0e5d636.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44808 - "GET /static/images/7770d501fe1f64c3f7abb5064a59ef79.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44796 - "GET /static/images/0e25669748cba639e81d73a8864a96ab.jpg HTTP/1.1" 200 OK
+/home/shivam/code-masala/zoma-thon/api.py:117: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+  cart_dicts = [item.dict() for item in req.cart]
+[Inference] predict_addon: Modeling 17 candidates. Cart has: ['Butter Chicken', 'Paneer Tikka Masala']
+[Inference] Softmax entropy: 2.5328 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:44816 - "POST /cart/recommend HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47238 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47238 - "GET /user/1/analytics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58516 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+[Inference] predict_addon: Modeling 17 candidates. Cart has: ['Butter Chicken', 'Paneer Tikka Masala']
+[Inference] Softmax entropy: 2.5328 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:58516 - "POST /cart/recommend HTTP/1.1" 200 OK
+[Inference] predict_addon: Modeling 18 candidates. Cart has: ['Butter Chicken']
+[Inference] Softmax entropy: 2.5526 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:58516 - "POST /cart/recommend HTTP/1.1" 200 OK
+[Inference] predict_addon: Modeling 17 candidates. Cart has: ['Butter Chicken', 'Onion Salad']
+[Inference] Softmax entropy: 2.4160 (H_max=2.5)
+[Inference] predict_addon completed in 8.34 ms
+INFO:     127.0.0.1:58516 - "POST /cart/recommend HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58516 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+[Inference] predict_addon: Modeling 16 candidates. Cart has: ['Butter Chicken', 'Onion Salad', 'Naan']
+[Inference] Softmax entropy: 2.1297 (H_max=2.5)
+[Inference] predict_addon completed in 11.71 ms
+INFO:     127.0.0.1:58516 - "POST /cart/recommend HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58516 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:41016 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46658 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46658 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46658 - "GET /home.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46658 - "GET /user/1/analytics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46660 - "GET /static/images/e77f286150d4c26d6a57fe146500dfe4.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46662 - "GET /static/images/e31ac5400760520f4a0c9b03abf9b65e.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46686 - "GET /static/images/db85c76065a6721b12004340a15a7ce0.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46692 - "GET /static/images/0b286b3d317d193e787068a627b574cd.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46678 - "GET /static/images/1fabbddd636e2f949c3d078d963c2aaf.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46660 - "GET /static/images/bfffcd2dcdcd32c4e9c09b0c4d18149b.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46658 - "GET /static/images/d97bb257ece2330c10c9430a3e20e131.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46678 - "GET /product-images/Margherita_Pizza.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46660 - "GET /product-images/Masala_Dosa.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:46658 - "GET /product-images/Butter_Chicken.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59024 - "GET /menu.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59024 - "GET /menu HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59042 - "GET /static/images/1b5a513b105240a6d351d8c597161b3b.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59044 - "GET /static/images/3d600d62da75cc07d3ce89ef060da404.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59040 - "GET /static/images/46407de149126d9d78fef89915967f12.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59046 - "GET /static/images/19dbb5e6f9e9030be020c7bbef07c5de.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59046 - "GET /product-images/Paneer_Tikka_Masala.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59040 - "GET /product-images/Dal_Makhani.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59024 - "GET /product-images/Kadai_Paneer.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59044 - "GET /product-images/Chole_Bhature.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59042 - "GET /product-images/Rajma_Chawal.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59052 - "GET /product-images/Naan.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59042 - "GET /product-images/Butter_Roti.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59052 - "GET /product-images/Garlic_Naan.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59044 - "GET /product-images/Raita.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59024 - "GET /product-images/Onion_Salad.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59046 - "GET /product-images/Lassi.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59040 - "GET /product-images/Papad.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59040 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59046 - "GET /product-images/Jaljeera.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59046 - "GET /product-images/Gulab_Jamun.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59040 - "GET /product-images/Buttermilk.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59044 - "GET /product-images/Kheer.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59052 - "GET /product-images/Rasmalai.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:45418 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:45422 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52934 - "GET /cart.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52934 - "GET /static/images/f9c8af819b8fc9c3c4d29f91eff2c515.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52942 - "GET /static/images/b49502aea6a289a1a5eff0fce0e5d636.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52952 - "GET /static/images/7770d501fe1f64c3f7abb5064a59ef79.jpg HTTP/1.1" 304 Not Modified
+[Inference] predict_addon: Modeling 18 candidates. Cart has: ['Butter Chicken']
+INFO:     127.0.0.1:52950 - "GET /static/images/0e25669748cba639e81d73a8864a96ab.jpg HTTP/1.1" 304 Not Modified
+[Inference] Softmax entropy: 2.5526 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:52956 - "POST /cart/recommend HTTP/1.1" 200 OK
+[Inference] predict_addon: Modeling 18 candidates. Cart has: ['Butter Chicken']
+[Inference] Softmax entropy: 2.5526 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:52958 - "POST /cart/recommend HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41908 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55224 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:43530 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:43530 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:43530 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:43530 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:43530 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:43530 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+[Inference] predict_addon: Modeling 18 candidates. Cart has: ['Butter Chicken']
+[Inference] Softmax entropy: 2.5526 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:43530 - "POST /cart/recommend HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43530 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+[Inference] predict_addon: Modeling 18 candidates. Cart has: ['Butter Chicken']
+[Inference] Softmax entropy: 2.5526 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:52062 - "POST /cart/recommend HTTP/1.1" 200 OK
+[Inference] predict_addon: Modeling 18 candidates. Cart has: ['Butter Chicken']
+[Inference] Softmax entropy: 2.5526 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:52062 - "POST /cart/recommend HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52062 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52062 - "GET /user/1/analytics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52062 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52062 - "GET /user/1/analytics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52062 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52062 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52062 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52062 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+[Inference] predict_addon: Modeling 18 candidates. Cart has: ['Paneer Tikka Masala']
+[Inference] Softmax entropy: 2.5492 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:52062 - "POST /cart/recommend HTTP/1.1" 200 OK
+[Inference] predict_addon: Modeling 17 candidates. Cart has: ['Paneer Tikka Masala', 'Naan']
+[Inference] Softmax entropy: 2.4160 (H_max=2.5)
+[Inference] predict_addon completed in 18.71 ms
+INFO:     127.0.0.1:52062 - "POST /cart/recommend HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52062 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+[Inference] predict_addon: Modeling 16 candidates. Cart has: ['Paneer Tikka Masala', 'Naan', 'Masala Chai']
+[Inference] Softmax entropy: 2.5850 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:37046 - "POST /cart/recommend HTTP/1.1" 200 OK
+[Inference] predict_addon: Modeling 15 candidates. Cart has: ['Paneer Tikka Masala', 'Naan', 'Masala Chai', 'Raita']
+[Inference] Softmax entropy: 2.5272 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:37046 - "POST /cart/recommend HTTP/1.1" 200 OK
+/home/shivam/code-masala/zoma-thon/api.py:164: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+  cart_dicts = [item.dict() for item in req.cart]
+[Engine] Order placed for User 1. Total Orders: 1, AOV: ₹380.00
+INFO:     127.0.0.1:37046 - "POST /checkout HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37046 - "GET /user/1/analytics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37046 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36680 - "GET /product-images/Masala_Chai.png HTTP/1.1" 404 Not Found
+[Inference] predict_addon: Modeling 18 candidates. Cart has: ['Gulab Jamun']
+[Inference] Softmax entropy: 2.7827 (H_max=2.5)
+[Inference] High entropy detected — triggering popularity fallback.
+INFO:     127.0.0.1:36680 - "POST /cart/recommend HTTP/1.1" 200 OK
